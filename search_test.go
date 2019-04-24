@@ -10,16 +10,17 @@ import (
 	"strings"
 )
 
-const DoCleanup   = false
-const HideOutput  = true
-const OutputFname = "findoutput.txt"
+const (
+	DoCleanup   = true
+	OutputFname = "gos_output.txt"
+	TempTestDir = "testdir"
+)
 
 /*
- * The path is assumed to use '/' as the
- * path separator, and is made OS independent.
- * Any missing directory is created.
- * If there is an error the program will log
- * it and quit with a non-zero exit code.
+ * The path is assumed to use the '/' path
+ * separator. Missing directories are
+ * created. Files are overwritten if they
+ * already exist. Panic if there's an error.
  */
 func WriteStringToFile(path string, contents string) {
 	path = filepath.FromSlash(path) // Makes path OS independent
@@ -40,39 +41,34 @@ var out = os.Stdout
 
 func TestMain(m *testing.M) {
 	// This small file structure will be the testing environment.
-	WriteStringToFile("testdir/top.txt", "firstline\n\n\n\n\n"+
+	WriteStringToFile(TempTestDir+"/top.txt", "firstline\n\n\n\n\n"+
 	                                     "middle\n\n\n\n\n"+
 	                                     "lastline")
-	WriteStringToFile("testdir/left/underleft.txt", "something")
-	WriteStringToFile("testdir/dontsearch.exe", "\000foo")
-	WriteStringToFile("testdir/right/rightleft/bottomleft.txt", "bar")
-	WriteStringToFile("testdir/right/rightright/bottomright.txt", "bar")
+	WriteStringToFile(TempTestDir+"/left/underleft.txt", "something")
+	WriteStringToFile(TempTestDir+"/dontsearch.exe", "\000foo")
+	WriteStringToFile(TempTestDir+"/right/rightleft/bottomleft.txt", "bar")
+	WriteStringToFile(TempTestDir+"/right/rightright/bottomright.txt", "bar")
 
-	var f os.File
-	defer f.Close()
-	if HideOutput {
-		f, err := os.Create(OutputFname)
-		if err != nil {
-			panic(err)
-		}
-		out = f
+	f, err := os.Create(OutputFname)
+	if err != nil {
+		panic(err)
 	}
+	defer f.Close()
+	out = f
 
 	code := m.Run() // Run the tests
 
 	// Cleanup
 	if DoCleanup {
-		err := os.RemoveAll("testdir")
+		err := os.RemoveAll(TempTestDir)
 		if err != nil {
-			log.Fatalf("Error while removing test directory:\n"+
-			           "\t%s\n"+
-			           "Please remove it manually at path \".\\testdir\".\n", err.Error())
+			log.Fatalf("Could not remove the test directory \"%s\","+
+			           "please remove it manually.", TempTestDir)
 		}
-		if HideOutput {
-			err = os.Remove(OutputFname)
-			if err != nil {
-				panic(err)
-			}
+		f.Close()
+		err = os.Remove(OutputFname)
+		if err != nil {
+			panic(err)
 		}
 	}
 	
@@ -144,8 +140,8 @@ func Expect(t *testing.T, params FindParameters, expected []Match) {
 
 func TestNonRecursive(t *testing.T) {
 	params := NewFindParameters("some")
-	params.paths = []string{"testdir/left/"}
-	expected := []Match{Match{"testdir/left/underleft.txt", "some", 1, 0}}
+	params.paths = []string{TempTestDir+"/left/"}
+	expected := []Match{Match{TempTestDir+"/left/underleft.txt", "some", 1, 0}}
 	Expect(t, params, expected)
 	
 	params.regexString = "dontmatchmeplease"
@@ -155,44 +151,44 @@ func TestNonRecursive(t *testing.T) {
 
 func TestRecursive(t *testing.T) {
 	params := NewFindParameters("bar")
-	params.paths = []string{"testdir"}
+	params.paths = []string{TempTestDir}
 	params.recursive = true
 	expected := []Match {
-		Match{"testdir/right/rightright/bottomright.txt", "bar", 1, 0},
-		Match{"testdir/right/rightleft/bottomleft.txt", "bar", 1, 0},
+		Match{TempTestDir+"/right/rightright/bottomright.txt", "bar", 1, 0},
+		Match{TempTestDir+"/right/rightleft/bottomleft.txt", "bar", 1, 0},
 	}
 	Expect(t, params, expected)
 }
 
 func TestNullbytes(t *testing.T) {
 	params := NewFindParameters("foo")
-	params.paths = []string{"testdir/dontsearch.exe"}
+	params.paths = []string{TempTestDir+"/dontsearch.exe"}
 	expected := []Match{}
 	Expect(t, params, expected)
 	
 	params.noSkip = true
-	expected = []Match{Match{"testdir/dontsearch.exe", "foo", 1, 1}}
+	expected = []Match{Match{TempTestDir+"/dontsearch.exe", "foo", 1, 1}}
 	Expect(t, params, expected)
 }
 
 func TestFilenameSearch(t *testing.T) {
 	params := NewFindParameters(".*right.*")
-	params.paths = []string{"testdir/right"}
+	params.paths = []string{TempTestDir+"/right"}
 	params.fnamesOnly = true
 	params.recursive = true
 	expected := []Match {
-		Match{"testdir/right/rightleft",  "rightleft",  -1, -1},
-		Match{"testdir/right/rightright", "rightright", -1, -1},
-		Match{"testdir/right/rightright/bottomright.txt", "bottomright.txt", -1, -1},
+		Match{TempTestDir+"/right/rightleft",  "rightleft",  -1, -1},
+		Match{TempTestDir+"/right/rightright", "rightright", -1, -1},
+		Match{TempTestDir+"/right/rightright/bottomright.txt", "bottomright.txt", -1, -1},
 	}
 	Expect(t, params, expected)
 }
 
 func TestIgnoreCase(t *testing.T) {
 	params := NewFindParameters("LaStLiNe")
-	params.paths = []string{"testdir"}
+	params.paths = []string{TempTestDir}
 	params.ignoreCase = true
-	expected := []Match {Match{"testdir/top.txt", "lastline", 11, 0}}
+	expected := []Match {Match{TempTestDir+"/top.txt", "lastline", 11, 0}}
 	Expect(t, params, expected)
 
 	params.ignoreCase = false
