@@ -39,8 +39,7 @@ func WriteStringToFile(path string, contents string) {
 var out = os.Stdout
 
 func TestMain(m *testing.M) {
-	// Create a small file structure which
-	// will be the subject of all the tests.
+	// This small file structure will be the testing environment.
 	WriteStringToFile("testdir/top.txt", "firstline\n\n\n\n\n"+
 	                                     "middle\n\n\n\n\n"+
 	                                     "lastline")
