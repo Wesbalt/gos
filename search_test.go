@@ -10,6 +10,18 @@ import (
 	"strings"
 )
 
+/**
+ * Test ideas:
+ * Filter
+ * The filter should not affect the directories being followed in recursive mode. Test this.
+ * Following symlinks
+ * Not getting stuck in an infinite symlink loop
+ * Not searching past a nullbyte
+ * Searching an exe due to explicitly mentioning it (?)
+ * Match multiple things in one line
+ * Match at end of line (to test off-by-one)
+ */
+
 const (
 	DoCleanup   = true
 	OutputFname = "gos_output.txt"
@@ -115,24 +127,22 @@ func SplitPath(path string) []string {
 }
 
 func Expect(t *testing.T, params FindParameters, expected []Match) {
-	find(
-		params,
-		out,
-		func(path string, match string, line int, column int) {
-			actual := Match {path, match, line, column}
-			matched := false
-			for i, exp := range expected {
-				if MatchMatch(actual, exp) {
-					expected = append(expected[:i], expected[i+1:]...)
-					matched = true
-					break
-				}
+	params.listener = func(path string, match string, row int, column int) {
+		actual := Match {path, match, row, column}
+		matched := false
+		for i, exp := range expected {
+			if MatchMatch(actual, exp) {
+				// Remove the match from the expected list
+				expected = append(expected[:i], expected[i+1:]...)
+				matched = true
+				break
 			}
-			if !matched {
-				t.Fatalf("Unexpected match %s\n", actual)
-			}
-		},
-	)
+		}
+		if !matched {
+			t.Fatalf("Unexpected match %s\n", actual)
+		}
+	}
+	find(params, out)
 	if len(expected) != 0 {
 		t.Fatalf("Expected more matches %s\n", expected)
 	}
@@ -195,15 +205,3 @@ func TestIgnoreCase(t *testing.T) {
 	expected = []Match{}
 	Expect(t, params, expected)
 }
-
-/**
- * Test ideas:
- * Filter
- * The filter should not affect the directories being followed in recursive mode. Test this.
- * Following symlinks
- * Not getting stuck in an infinite symlink loop
- * Not searching past a nullbyte
- * Searching an exe due to explicitly mentioning it (?)
- * Match multiple things in one line
- * Match at end of line (to test off-by-one)
- */

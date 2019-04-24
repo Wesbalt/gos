@@ -13,9 +13,13 @@ package main
  *
  * Add flag to output absolute paths
  *
- * Add -ex and -examples to print example usages
+ * Add -examples to print example usages
  *
  * Should matchCount, searchCount, discoverCount and skipCount be tested?
+ *
+ * Right now the program basically panics if the parameters don't
+ * make sense. How about it returns an error instead? This could make
+ * for easier testing of invalid parameters e.g. gos -v -q.
  */
 
 import (
@@ -31,41 +35,6 @@ import (
     "os/signal"
     "io"
 )
-
-type FindParameters struct {
-	paths         []string
-	regexString   string
-	help          bool
-	recursive     bool
-	filterString  string
-	fnamesOnly    bool
-	ignoreCase    bool
-	quiet         bool
-	verbose       bool
-	noAnsiColor   bool
-	noSkip        bool
-}
-
-func NewFindParameters(regex string) FindParameters {
-	return FindParameters {
-		DefaultPaths,
-		regex,
-		DefaultHelp,
-		DefaultRecursive,
-		DefaultFilterString,
-		DefaultFnamesOnly,
-		DefaultIgnoreCase,
-		DefaultQuiet,
-		DefaultVerbose,
-		DefaultNoSkip,
-		DefaultNoAnsiColor,
-	}
-}
-
-type FileInfoWithPath struct {
-    os.FileInfo
-    path string
-}
 
 var DefaultPaths = []string{"."}
 const (
@@ -89,6 +58,43 @@ const (
 	NoSkipInfo       = "Search all files. Normally, binary files are skipped (ie those with nullbytes)."
 	NoAnsiColorInfo  = "Disable ANSI coloring in the output"
 )
+
+type FindParameters struct {
+	paths         []string
+	regexString   string
+	help          bool
+	recursive     bool
+	filterString  string
+	fnamesOnly    bool
+	ignoreCase    bool
+	quiet         bool
+	verbose       bool
+	noAnsiColor   bool
+	noSkip        bool
+	listener      func(path string, match string, row int, column int)
+}
+
+func NewFindParameters(regexString string) FindParameters {
+	return FindParameters {
+		paths:        DefaultPaths,
+		regexString:  regexString,
+		help:         DefaultHelp,
+		recursive:    DefaultRecursive,
+		filterString: DefaultFilterString,
+		fnamesOnly:   DefaultFnamesOnly,
+		ignoreCase:   DefaultIgnoreCase,
+		quiet:        DefaultQuiet,
+		verbose:      DefaultVerbose,
+		noAnsiColor:  DefaultNoAnsiColor,
+		noSkip:       DefaultNoSkip,
+		listener:     nil,
+	}
+}
+
+type FileInfoWithPath struct {
+    os.FileInfo
+    path string
+}
 
 func main() {
 	var p FindParameters
@@ -147,7 +153,7 @@ func main() {
 		}()
 	}
 
-	find(p, os.Stdout, nil)
+	find(p, os.Stdout)
 	done(false)
 }
 
@@ -173,10 +179,7 @@ var AnsiReset = "\033[0m"
 var AnsiError = "\033[91m"
 var AnsiMatch = "\033[92;4m"
 
-func find(
-	p   FindParameters,
-	out io.Writer,
-	listener func(path string, match string, lineNumber int, column int)) {
+func find(p FindParameters, out io.Writer) {
 
 	if p.quiet && p.verbose {
 		reportError(true, "The quiet and verbose modes are mutually exclusive.\n")
@@ -229,27 +232,7 @@ func find(
 		}
 
 		if p.fnamesOnly {
-			searchCount++
-			matches := splitStringAtAllMatches(f.Name(), regex)
-			if matches != nil {
-				for _,triple := range matches {
-					matchCount++
-					if listener != nil {
-						listener(f.path, triple.middle, -1, -1)
-					}
-
-					if p.quiet {
-						fmt.Fprintln(out, triple.middle)
-					} else {
-						path,_ := filepath.Split(f.path)
-						separatorIfDir := ""
-						if f.IsDir() {
-							separatorIfDir = string(os.PathSeparator)
-						}
-	               		fmt.Fprintf(out, "%s%s%s%s%s%s%s\n", path, triple.left, AnsiMatch, triple.middle, AnsiReset, triple.right, separatorIfDir)
-	               	}
-				}
-			}
+			searchFilename(p, f, regex)
 		} else {
 			if f.IsDir() || isSymlink(f) {
 				skipCount++
@@ -300,8 +283,8 @@ func find(
 	            	for _,triple := range matches {
 	            		matchCount++
 	            		column := len(triple.left) + leadingSpace
-						if listener != nil {
-							listener(f.path, triple.middle, lineNumber, column)
+						if p.listener != nil {
+							p.listener(f.path, triple.middle, lineNumber, column)
 						}
 
 						if p.quiet {
@@ -318,6 +301,30 @@ func find(
 	        }
 		}      
     }
+}
+
+func searchFilename(p FindParameters, f FileInfoWithPath, re *regexp.Regexp) {
+	searchCount++
+	matches := splitStringAtAllMatches(f.Name(), re)
+	if matches != nil {
+		for _,triple := range matches {
+			matchCount++
+			if p.listener != nil {
+				p.listener(f.path, triple.middle, -1, -1)
+			}
+
+			if p.quiet {
+				fmt.Fprintln(out, triple.middle)
+			} else {
+				path,_ := filepath.Split(f.path)
+				separatorIfDir := ""
+				if f.IsDir() {
+					separatorIfDir = string(os.PathSeparator)
+				}
+				   fmt.Fprintf(out, "%s%s%s%s%s%s%s\n", path, triple.left, AnsiMatch, triple.middle, AnsiReset, triple.right, separatorIfDir)
+			   }
+		}
+	}
 }
 
 func isDirOrSymlinkPointingToDir(f FileInfoWithPath) bool {
