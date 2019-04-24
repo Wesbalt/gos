@@ -28,6 +28,36 @@ import (
     "io"
 )
 
+type FindParameters struct {
+	paths         []string
+	regexString   string
+	help          bool
+	recursive     bool
+	filterString  string
+	fnamesOnly    bool
+	ignoreCase    bool
+	quiet         bool
+	verbose       bool
+	noAnsiColor   bool
+	noSkip        bool
+}
+
+func NewFindParameters(regex string) FindParameters {
+	return FindParameters {
+		DEFAULT_PATHS,
+		regex,
+		DEFAULT_HELP,
+		DEFAULT_RECURSIVE,
+		DEFAULT_FILTER,
+		DEFAULT_FNAMES_ONLY,
+		DEFAULT_IGNORE_CASE,
+		DEFAULT_QUIET,
+		DEFAULT_VERBOSE,
+		DEFAULT_NO_SKIP,
+		DEFAULT_NO_ANSI_COLOR,
+	}
+}
+
 type FileInfoWithPath struct {
     os.FileInfo
     path string
@@ -57,15 +87,7 @@ const (
 )
 
 func main() {
-	var help         bool
-	var recursive    bool
-	var filter       string
-	var fnamesOnly   bool
-	var ignoreCase   bool
-	var quiet        bool
-	var verbose      bool
-	var noSkip       bool
-	var noAnsiColor  bool
+	var p FindParameters
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage of search: %s [options] regex [path...]\n", os.Args[0])
@@ -73,40 +95,38 @@ func main() {
 		flag.PrintDefaults()
 	}
 
-	flag.BoolVar(&help, "h",    DEFAULT_HELP, HELP_INFO)
-	flag.BoolVar(&help, "help", DEFAULT_HELP, HELP_INFO)
- 	flag.BoolVar(&recursive, "r",         DEFAULT_RECURSIVE, RECURSIVE_INFO)
- 	flag.BoolVar(&recursive, "recursive", DEFAULT_RECURSIVE, RECURSIVE_INFO)
- 	flag.StringVar(&filter, "f",      DEFAULT_FILTER, FILTER_INFO)
- 	flag.StringVar(&filter, "filter", DEFAULT_FILTER, FILTER_INFO)
- 	flag.BoolVar(&fnamesOnly, "n",    DEFAULT_FNAMES_ONLY, FNAMES_ONLY_INFO)
- 	flag.BoolVar(&fnamesOnly, "name", DEFAULT_FNAMES_ONLY, FNAMES_ONLY_INFO)
-	flag.BoolVar(&ignoreCase, "i",          DEFAULT_IGNORE_CASE, IGNORE_CASE_INFO)
-	flag.BoolVar(&ignoreCase, "ignorecase", DEFAULT_IGNORE_CASE, IGNORE_CASE_INFO)
-	flag.BoolVar(&quiet, "q",     DEFAULT_QUIET, QUIET_INFO)
-	flag.BoolVar(&quiet, "quiet", DEFAULT_QUIET, QUIET_INFO)
-	flag.BoolVar(&verbose, "v",       DEFAULT_VERBOSE, VERBOSE_INFO)
-	flag.BoolVar(&verbose, "verbose", DEFAULT_VERBOSE, VERBOSE_INFO)
-	flag.BoolVar(&noSkip, "noskip", DEFAULT_NO_SKIP, NO_ANSI_COLOR_INFO)
-	flag.BoolVar(&noAnsiColor, "nocolor", DEFAULT_NO_ANSI_COLOR, NO_ANSI_COLOR_INFO)
+	flag.BoolVar(&p.help, "h",    DEFAULT_HELP, HELP_INFO)
+	flag.BoolVar(&p.help, "help", DEFAULT_HELP, HELP_INFO)
+ 	flag.BoolVar(&p.recursive, "r",         DEFAULT_RECURSIVE, RECURSIVE_INFO)
+ 	flag.BoolVar(&p.recursive, "recursive", DEFAULT_RECURSIVE, RECURSIVE_INFO)
+ 	flag.StringVar(&p.filterString, "f",      DEFAULT_FILTER, FILTER_INFO)
+ 	flag.StringVar(&p.filterString, "filter", DEFAULT_FILTER, FILTER_INFO)
+ 	flag.BoolVar(&p.fnamesOnly, "n",    DEFAULT_FNAMES_ONLY, FNAMES_ONLY_INFO)
+ 	flag.BoolVar(&p.fnamesOnly, "name", DEFAULT_FNAMES_ONLY, FNAMES_ONLY_INFO)
+	flag.BoolVar(&p.ignoreCase, "i",          DEFAULT_IGNORE_CASE, IGNORE_CASE_INFO)
+	flag.BoolVar(&p.ignoreCase, "ignorecase", DEFAULT_IGNORE_CASE, IGNORE_CASE_INFO)
+	flag.BoolVar(&p.quiet, "q",     DEFAULT_QUIET, QUIET_INFO)
+	flag.BoolVar(&p.quiet, "quiet", DEFAULT_QUIET, QUIET_INFO)
+	flag.BoolVar(&p.verbose, "v",       DEFAULT_VERBOSE, VERBOSE_INFO)
+	flag.BoolVar(&p.verbose, "verbose", DEFAULT_VERBOSE, VERBOSE_INFO)
+	flag.BoolVar(&p.noSkip, "noskip", DEFAULT_NO_SKIP, NO_ANSI_COLOR_INFO)
+	flag.BoolVar(&p.noAnsiColor, "nocolor", DEFAULT_NO_ANSI_COLOR, NO_ANSI_COLOR_INFO)
 	flag.Parse()
 
-	if help {
+	if p.help {
 		flag.Usage()
 		os.Exit(0)
 	}
 
-	var regex string
-	var paths []string
 	if flag.NArg() == 0 {
 		flag.Usage()
 		os.Exit(1)
 	} else if flag.NArg() == 1 {
-		regex = flag.Args()[0]
-		paths = DEFAULT_PATHS
+		p.regexString = flag.Args()[0]
+		p.paths = DEFAULT_PATHS
 	} else {
-		regex = flag.Args()[0]
-		paths = flag.Args()[1:]
+		p.regexString = flag.Args()[0]
+		p.paths = flag.Args()[1:]
 	}
 
 	{ // Make and run a channel that detects interrupts
@@ -121,7 +141,7 @@ func main() {
 
 	//fmt.Printf("paths=%s\n", paths)
 	
-	find(paths, regex, recursive, filter, fnamesOnly, ignoreCase, quiet, verbose, noSkip, noAnsiColor, os.Stdout, nil)
+	find(p, os.Stdout, nil)
 	done(false)
 }
 
@@ -159,47 +179,38 @@ var ANSI_ERROR = "\033[91m"
 var ANSI_MATCH = "\033[92;4m"
 
 func find(
-	paths         []string,
-	regexString   string,
-	recursive     bool,
-	filterString  string,
-	fnamesOnly    bool,
-	ignoreCase    bool,
-	quiet         bool,
-	verbose       bool,
-	noSkip        bool,
-	noAnsiColor   bool,
-	out           io.Writer,
-	listener      func(path string, match string, lineNumber int, column int)) {
+	p   FindParameters,
+	out io.Writer,
+	listener func(path string, match string, lineNumber int, column int)) {
 
-	if quiet && verbose {
+	if p.quiet && p.verbose {
 		reportError(true, "The quiet and verbose modes are mutually exclusive.\n")
 	}
 	
-	if filterString != "" && fnamesOnly {
+	if p.filterString != "" && p.fnamesOnly {
 		reportError(true, "Using the filter while searching for filenames is redundant.\n")
 	}
 	var maybeIgnoreCase = ""
-	if ignoreCase {
+	if p.ignoreCase {
 		maybeIgnoreCase = "(?i)"
 	}
 
-	if noAnsiColor {
+	if p.noAnsiColor {
 		ANSI_RESET = ""
 		ANSI_ERROR = ""
 		ANSI_MATCH = ""
 	}
 
-    regex, err := regexp.Compile(maybeIgnoreCase+regexString)
+    regex, err := regexp.Compile(maybeIgnoreCase+p.regexString)
     if err != nil {
 		reportError(true, "Bad mandatory regex: %s\n", err.Error())
     }
-    filter, err := regexp.Compile(maybeIgnoreCase+filterString)
+    filter, err := regexp.Compile(maybeIgnoreCase+p.filterString)
     if err != nil {
 		reportError(true, "Bad filter regex: %s\n", err.Error())
     }
 
-    queue := getFileInfoWithPaths(paths, verbose, out)
+    queue := getFileInfoWithPaths(p.paths, p.verbose, out)
 
     for len(queue) > 0 {
 
@@ -207,22 +218,22 @@ func find(
         queue = queue[1:]
         discoverCount++
         
-        if isDirOrSymlinkPointingToDir(f) && recursive {
-            children := getFileInfoWithPaths([]string{f.path}, verbose, out)
+        if isDirOrSymlinkPointingToDir(f) && p.recursive {
+            children := getFileInfoWithPaths([]string{f.path}, p.verbose, out)
             // Appending the children makes the search method BFS. If they were
             // prepended it would be DFS. I don't know what the best decision is.
            	queue = append(queue, children...)
         }
 
-		if filterString != "" && !filter.MatchString(f.Name()) {
+		if p.filterString != "" && !filter.MatchString(f.Name()) {
 			skipCount++
-			if verbose {
+			if p.verbose {
 				reportError(false, "Skipping %s\n", f.Name())
 			}
 			continue
 		}
 
-		if fnamesOnly {
+		if p.fnamesOnly {
 			searchCount++
 			matches := splitStringAtAllMatches(f.Name(), regex)
 			if matches != nil {
@@ -232,7 +243,7 @@ func find(
 						listener(f.path, triple.middle, -1, -1)
 					}
 
-					if quiet {
+					if p.quiet {
 						fmt.Fprintln(out, triple.middle)
 					} else {
 						path,_ := filepath.Split(f.path)
@@ -252,7 +263,7 @@ func find(
 
 	        openedFile, err := os.Open(f.path)
 	        if err != nil {
-	       		if verbose {
+	       		if p.verbose {
 	       			fmt.Fprintf(out, "%s%s%s\n", ANSI_ERROR, err.Error(), ANSI_RESET)
 	        	}
 				continue
@@ -277,7 +288,7 @@ func find(
 		        	}
 	        	}
 	        	
-				if !noSkip {
+				if !p.noSkip {
 		            for _, r := range line {
 		                if r == '\000' {
 		                	// Files with non-printable chars, ie nullbytes, are skipped.
@@ -298,7 +309,7 @@ func find(
 							listener(f.path, triple.middle, lineNumber, column)
 						}
 
-						if quiet {
+						if p.quiet {
 							fmt.Fprintln(out, triple.middle)
 						} else {
 	                		fmt.Fprintf(out, "%s:%v:%v: %s%s%s%s%s\n", f.path, lineNumber, column, triple.left, ANSI_MATCH, triple.middle, ANSI_RESET, triple.right)
@@ -307,7 +318,7 @@ func find(
 	            }
 	            lineNumber += 1
 	        }
-	        if err := scanner.Err(); err != nil && verbose {
+	        if err := scanner.Err(); err != nil && p.verbose {
 	        	reportError(false, "%s: %s\n", f.path, err.Error())
 	        }
 		}      

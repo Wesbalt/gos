@@ -119,48 +119,9 @@ func SplitPath(path string) []string {
 	return strings.Split(filepath.FromSlash(path), string(os.PathSeparator))
 }
 
-type FindParameters struct {
-	paths        []string
-	regex        string
-	help         bool
-	recursive    bool
-	filter       string
-	fnamesOnly   bool
-	ignoreCase   bool
-	quiet        bool
-	verbose      bool
-	noAnsiColor  bool
-	noSkip       bool
-}
-
-func NewFindParameters(regex string) FindParameters {
-	return FindParameters {
-		DEFAULT_PATHS,
-		regex,
-		DEFAULT_HELP,
-		DEFAULT_RECURSIVE,
-		DEFAULT_FILTER,
-		DEFAULT_FNAMES_ONLY,
-		DEFAULT_IGNORE_CASE,
-		DEFAULT_QUIET,
-		DEFAULT_VERBOSE,
-		DEFAULT_NO_SKIP,
-		DEFAULT_NO_ANSI_COLOR,
-	}
-}
-
 func Expect(t *testing.T, params FindParameters, expected []Match) {
 	find(
-		params.paths,
-		params.regex,
-		params.recursive,
-		params.filter,
-		params.fnamesOnly,
-		params.ignoreCase,
-		params.quiet,
-		params.verbose,
-		params.noSkip,
-		params.noAnsiColor,
+		params,
 		out,
 		func(path string, match string, line int, column int) {
 			actual := Match {path, match, line, column}
@@ -188,7 +149,7 @@ func TestNonRecursive(t *testing.T) {
 	expected := []Match{Match{"testdir/left/underleft.txt", "some", 1, 0}}
 	Expect(t, params, expected)
 	
-	params.regex = "dontmatchmeplease"
+	params.regexString = "dontmatchmeplease"
 	expected = []Match{}
 	Expect(t, params, expected)
 }
