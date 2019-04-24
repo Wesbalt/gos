@@ -12,6 +12,10 @@ package main
  * that should be skipped.
  *
  * Add flag to output absolute paths
+ *
+ * Add -ex and -examples to print example usages
+ *
+ * Should matchCount, searchCount, discoverCount and skipCount be tested?
  */
 
 import (
@@ -44,17 +48,17 @@ type FindParameters struct {
 
 func NewFindParameters(regex string) FindParameters {
 	return FindParameters {
-		DEFAULT_PATHS,
+		DefaultPaths,
 		regex,
-		DEFAULT_HELP,
-		DEFAULT_RECURSIVE,
-		DEFAULT_FILTER,
-		DEFAULT_FNAMES_ONLY,
-		DEFAULT_IGNORE_CASE,
-		DEFAULT_QUIET,
-		DEFAULT_VERBOSE,
-		DEFAULT_NO_SKIP,
-		DEFAULT_NO_ANSI_COLOR,
+		DefaultHelp,
+		DefaultRecursive,
+		DefaultFilterString,
+		DefaultFnamesOnly,
+		DefaultIgnoreCase,
+		DefaultQuiet,
+		DefaultVerbose,
+		DefaultNoSkip,
+		DefaultNoAnsiColor,
 	}
 }
 
@@ -63,27 +67,27 @@ type FileInfoWithPath struct {
     path string
 }
 
-var DEFAULT_PATHS = []string{"."}
+var DefaultPaths = []string{"."}
 const (
-	DEFAULT_HELP          = false
-	DEFAULT_RECURSIVE     = false
-	DEFAULT_FILTER        = ""
-	DEFAULT_FNAMES_ONLY   = false
-	DEFAULT_IGNORE_CASE   = false
-	DEFAULT_QUIET         = false
-	DEFAULT_VERBOSE       = false
-	DEFAULT_NO_SKIP       = false
-	DEFAULT_NO_ANSI_COLOR = false
+	DefaultHelp         = false
+	DefaultRecursive    = false
+	DefaultFilterString = ""
+	DefaultFnamesOnly   = false
+	DefaultIgnoreCase   = false
+	DefaultQuiet        = false
+	DefaultVerbose      = false
+	DefaultNoSkip       = false
+	DefaultNoAnsiColor  = false
 
-	HELP_INFO          = "Display this message"
-	RECURSIVE_INFO     = "Search in subdirectories"
-	FILTER_INFO        = "Search only in files whose names match the given `regex`.\nAll directories are still followed in recursive mode."
-	FNAMES_ONLY_INFO   = "Search for file and directory names instead of file contents"
-	IGNORE_CASE_INFO   = "Turn off case sensitivity"
-	QUIET_INFO         = "Print only the matches"
-	VERBOSE_INFO       = "Print what files and directories are being skipped"
-	NO_SKIP_INFO       = "Search all files. Normally, files containing nullbytes are skipped."
-	NO_ANSI_COLOR_INFO = "Disable ANSI coloring"
+	HelpInfo         = "Display this message"
+	RecursiveInfo    = "Search in subdirectories"
+	FilterStringInfo = "Search only in files whose names match the given `regex`.\nAll directories are still followed in recursive mode."
+	FnamesOnlyInfo   = "Search for file and directory names instead of file contents"
+	IgnoreCaseInfo   = "Turn off case sensitivity"
+	QuietInfo        = "Print only the matches"
+	VerboseInfo      = "Print what files and directories are being skipped"
+	NoSkipInfo       = "Search all files. Normally, binary files are skipped (ie those with nullbytes)."
+	NoAnsiColorInfo  = "Disable ANSI coloring in the output"
 )
 
 func main() {
@@ -95,22 +99,15 @@ func main() {
 		flag.PrintDefaults()
 	}
 
-	flag.BoolVar(&p.help, "h",    DEFAULT_HELP, HELP_INFO)
-	flag.BoolVar(&p.help, "help", DEFAULT_HELP, HELP_INFO)
- 	flag.BoolVar(&p.recursive, "r",         DEFAULT_RECURSIVE, RECURSIVE_INFO)
- 	flag.BoolVar(&p.recursive, "recursive", DEFAULT_RECURSIVE, RECURSIVE_INFO)
- 	flag.StringVar(&p.filterString, "f",      DEFAULT_FILTER, FILTER_INFO)
- 	flag.StringVar(&p.filterString, "filter", DEFAULT_FILTER, FILTER_INFO)
- 	flag.BoolVar(&p.fnamesOnly, "n",    DEFAULT_FNAMES_ONLY, FNAMES_ONLY_INFO)
- 	flag.BoolVar(&p.fnamesOnly, "name", DEFAULT_FNAMES_ONLY, FNAMES_ONLY_INFO)
-	flag.BoolVar(&p.ignoreCase, "i",          DEFAULT_IGNORE_CASE, IGNORE_CASE_INFO)
-	flag.BoolVar(&p.ignoreCase, "ignorecase", DEFAULT_IGNORE_CASE, IGNORE_CASE_INFO)
-	flag.BoolVar(&p.quiet, "q",     DEFAULT_QUIET, QUIET_INFO)
-	flag.BoolVar(&p.quiet, "quiet", DEFAULT_QUIET, QUIET_INFO)
-	flag.BoolVar(&p.verbose, "v",       DEFAULT_VERBOSE, VERBOSE_INFO)
-	flag.BoolVar(&p.verbose, "verbose", DEFAULT_VERBOSE, VERBOSE_INFO)
-	flag.BoolVar(&p.noSkip, "noskip", DEFAULT_NO_SKIP, NO_ANSI_COLOR_INFO)
-	flag.BoolVar(&p.noAnsiColor, "nocolor", DEFAULT_NO_ANSI_COLOR, NO_ANSI_COLOR_INFO)
+	flag.BoolVar  (&p.help,         "h",          DefaultHelp,         HelpInfo)
+ 	flag.BoolVar  (&p.recursive,    "r",          DefaultRecursive,    RecursiveInfo)
+ 	flag.StringVar(&p.filterString, "f",          DefaultFilterString, FilterStringInfo)
+ 	flag.BoolVar  (&p.fnamesOnly,   "n",          DefaultFnamesOnly,   FnamesOnlyInfo)
+	flag.BoolVar  (&p.ignoreCase,   "i",          DefaultIgnoreCase,   IgnoreCaseInfo)
+	flag.BoolVar  (&p.quiet,        "q",          DefaultQuiet,        QuietInfo)
+	flag.BoolVar  (&p.verbose,      "v",          DefaultVerbose,      VerboseInfo)
+	flag.BoolVar  (&p.noSkip,       "noskip",     DefaultNoSkip,       NoSkipInfo)
+	flag.BoolVar  (&p.noAnsiColor,  "nocolor",    DefaultNoAnsiColor,  NoAnsiColorInfo)
 	flag.Parse()
 
 	if p.help {
@@ -123,10 +120,21 @@ func main() {
 		os.Exit(1)
 	} else if flag.NArg() == 1 {
 		p.regexString = flag.Args()[0]
-		p.paths = DEFAULT_PATHS
+		p.paths = DefaultPaths
 	} else {
 		p.regexString = flag.Args()[0]
 		p.paths = flag.Args()[1:]
+	}
+
+	done := func(interrupted bool) {
+		msg := "Complete."
+		code := 0
+		if interrupted {
+		  msg = "Interrupted by user."
+		  code = 1
+		}
+		fmt.Printf("%s%s %v matched, %v searched, %v discovered, %v skipped.", AnsiReset, msg, matchCount, searchCount, discoverCount, skipCount)
+		os.Exit(code)
 	}
 
 	{ // Make and run a channel that detects interrupts
@@ -139,21 +147,8 @@ func main() {
 		}()
 	}
 
-	//fmt.Printf("paths=%s\n", paths)
-	
 	find(p, os.Stdout, nil)
 	done(false)
-}
-
-func done(interrupted bool) {
-    msg := "Complete."
-    code := 0
-    if interrupted {
-      msg = "Interrupted by user."
-      code = 1
-    }
-	fmt.Printf("%s%s %v matched, %v searched, %v discovered, %v skipped.", ANSI_RESET, msg, matchCount, searchCount, discoverCount, skipCount)
-	os.Exit(code)
 }
 
 var matchCount    = 0
@@ -163,9 +158,9 @@ var skipCount     = 0
 
 func reportError(exit bool, fstring string, args ...interface{}) {
 //	if len(args) == 0 {
-//		fmt.Fprintf(os.Stderr, ANSI_ERROR+fstring+ANSI_RESET)
+//		fmt.Fprintf(os.Stderr, AnsiError+fstring+AnsiReset)
 //	} else {
-		fmt.Fprintf(os.Stderr, ANSI_ERROR+fstring+ANSI_RESET, args...)
+		fmt.Fprintf(os.Stderr, AnsiError+fstring+AnsiReset, args...)
 //	}
 	if exit {
 		os.Exit(1)
@@ -174,9 +169,9 @@ func reportError(exit bool, fstring string, args ...interface{}) {
 
 // ANSI escape sequences. See the link for available parameters.
 // https://en.wikipedia.org/wiki/ANSI_escape_code#SGR_(Select_Graphic_Rendition)_parameters
-var ANSI_RESET = "\033[0m"
-var ANSI_ERROR = "\033[91m"
-var ANSI_MATCH = "\033[92;4m"
+var AnsiReset = "\033[0m"
+var AnsiError = "\033[91m"
+var AnsiMatch = "\033[92;4m"
 
 func find(
 	p   FindParameters,
@@ -196,9 +191,9 @@ func find(
 	}
 
 	if p.noAnsiColor {
-		ANSI_RESET = ""
-		ANSI_ERROR = ""
-		ANSI_MATCH = ""
+		AnsiReset = ""
+		AnsiError = ""
+		AnsiMatch = ""
 	}
 
     regex, err := regexp.Compile(maybeIgnoreCase+p.regexString)
@@ -251,7 +246,7 @@ func find(
 						if f.IsDir() {
 							separatorIfDir = string(os.PathSeparator)
 						}
-	               		fmt.Fprintf(out, "%s%s%s%s%s%s%s\n", path, triple.left, ANSI_MATCH, triple.middle, ANSI_RESET, triple.right, separatorIfDir)
+	               		fmt.Fprintf(out, "%s%s%s%s%s%s%s\n", path, triple.left, AnsiMatch, triple.middle, AnsiReset, triple.right, separatorIfDir)
 	               	}
 				}
 			}
@@ -264,7 +259,7 @@ func find(
 	        openedFile, err := os.Open(f.path)
 	        if err != nil {
 	       		if p.verbose {
-	       			fmt.Fprintf(out, "%s%s%s\n", ANSI_ERROR, err.Error(), ANSI_RESET)
+	       			fmt.Fprintf(out, "%s%s%s\n", AnsiError, err.Error(), AnsiReset)
 	        	}
 				continue
 	        }
@@ -312,7 +307,7 @@ func find(
 						if p.quiet {
 							fmt.Fprintln(out, triple.middle)
 						} else {
-	                		fmt.Fprintf(out, "%s:%v:%v: %s%s%s%s%s\n", f.path, lineNumber, column, triple.left, ANSI_MATCH, triple.middle, ANSI_RESET, triple.right)
+	                		fmt.Fprintf(out, "%s:%v:%v: %s%s%s%s%s\n", f.path, lineNumber, column, triple.left, AnsiMatch, triple.middle, AnsiReset, triple.right)
 	                	}
 	                }
 	            }

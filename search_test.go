@@ -10,9 +10,9 @@ import (
 	"strings"
 )
 
-const DO_CLEANUP = false
-const HIDE_FIND_OUTPUT = true
-const FIND_OUTPUT_FNAME = "findoutput.txt"
+const DoCleanup   = false
+const HideOutput  = true
+const OutputFname = "findoutput.txt"
 
 /*
  * The path is assumed to use '/' as the
@@ -51,8 +51,8 @@ func TestMain(m *testing.M) {
 
 	var f os.File
 	defer f.Close()
-	if HIDE_FIND_OUTPUT {
-		f, err := os.Create(FIND_OUTPUT_FNAME)
+	if HideOutput {
+		f, err := os.Create(OutputFname)
 		if err != nil {
 			panic(err)
 		}
@@ -62,15 +62,15 @@ func TestMain(m *testing.M) {
 	code := m.Run() // Run the tests
 
 	// Cleanup
-	if DO_CLEANUP {
+	if DoCleanup {
 		err := os.RemoveAll("testdir")
 		if err != nil {
 			log.Fatalf("Error while removing test directory:\n"+
 			           "\t%s\n"+
 			           "Please remove it manually at path \".\\testdir\".\n", err.Error())
 		}
-		if HIDE_FIND_OUTPUT {
-			err = os.Remove(FIND_OUTPUT_FNAME)
+		if HideOutput {
+			err = os.Remove(OutputFname)
 			if err != nil {
 				panic(err)
 			}
