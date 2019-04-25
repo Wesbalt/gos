@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"fmt"
 	"strings"
+	"io"
 )
 
 /**
@@ -49,7 +50,7 @@ func WriteStringToFile(path string, contents string) {
 	}
 }
 
-var out = os.Stdout
+var out io.Writer
 
 func TestMain(m *testing.M) {
 	// This small file structure will be the testing environment.
@@ -127,6 +128,7 @@ func SplitPath(path string) []string {
 }
 
 func Expect(t *testing.T, params FindParameters, expected []Match) {
+	params.out = out
 	params.listener = func(path string, match string, row int, column int) {
 		actual := Match {path, match, row, column}
 		matched := false
@@ -142,7 +144,7 @@ func Expect(t *testing.T, params FindParameters, expected []Match) {
 			t.Fatalf("Unexpected match %s\n", actual)
 		}
 	}
-	find(params, out)
+	find(params)
 	if len(expected) != 0 {
 		t.Fatalf("Expected more matches %s\n", expected)
 	}

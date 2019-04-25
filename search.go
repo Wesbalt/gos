@@ -71,6 +71,7 @@ type FindParameters struct {
 	verbose       bool
 	noAnsiColor   bool
 	noSkip        bool
+	out           io.Writer
 	listener      func(path string, match string, row int, column int)
 }
 
@@ -87,6 +88,7 @@ func NewFindParameters(regexString string) FindParameters {
 		verbose:      DefaultVerbose,
 		noAnsiColor:  DefaultNoAnsiColor,
 		noSkip:       DefaultNoSkip,
+		out:          os.Stdout,
 		listener:     nil,
 	}
 }
@@ -153,7 +155,7 @@ func main() {
 		}()
 	}
 
-	find(p, os.Stdout)
+	find(p)
 	done(false)
 }
 
@@ -179,7 +181,7 @@ var AnsiReset = "\033[0m"
 var AnsiError = "\033[91m"
 var AnsiMatch = "\033[92;4m"
 
-func find(p FindParameters, out io.Writer) {
+func find(p FindParameters) {
 
 	if p.quiet && p.verbose {
 		reportError(true, "The quiet and verbose modes are mutually exclusive.\n")
@@ -208,7 +210,7 @@ func find(p FindParameters, out io.Writer) {
 		reportError(true, "Bad filter regex: %s\n", err.Error())
     }
 
-    queue := getFileInfoWithPaths(p.paths, p.verbose, out)
+    queue := getFileInfoWithPaths(p, p.paths)
 
     for len(queue) > 0 {
 
@@ -217,7 +219,7 @@ func find(p FindParameters, out io.Writer) {
         discoverCount++
         
         if isDirOrSymlinkPointingToDir(f) && p.recursive {
-            children := getFileInfoWithPaths([]string{f.path}, p.verbose, out)
+            children := getFileInfoWithPaths(p, []string{f.path})
             // Appending the children makes the search method BFS. If they were
             // prepended it would be DFS. I don't know what the best decision is.
            	queue = append(queue, children...)
@@ -234,71 +236,7 @@ func find(p FindParameters, out io.Writer) {
 		if p.fnamesOnly {
 			searchFilename(p, f, regex)
 		} else {
-			if f.IsDir() || isSymlink(f) {
-				skipCount++
-				continue
-			}
-
-	        openedFile, err := os.Open(f.path)
-	        if err != nil {
-	       		if p.verbose {
-	       			fmt.Fprintf(out, "%s%s%s\n", AnsiError, err.Error(), AnsiReset)
-	        	}
-				continue
-	        }
-	        defer openedFile.Close()
-	
-	        scanner := bufio.NewScanner(openedFile)
-	        
-	        lineNumber := 1
-	        LineLoop: for scanner.Scan() {
-
-				line := strings.TrimSpace(scanner.Text())
-
-				leadingSpace := 0
-				{
-		        	for _,r := range scanner.Text() {
-						if unicode.IsSpace(r) {
-							leadingSpace++
-						} else {
-							break
-						}
-		        	}
-	        	}
-	        	
-				if !p.noSkip {
-		            for _, r := range line {
-		                if r == '\000' {
-		                	// Files with non-printable chars, ie nullbytes, are skipped.
-		                	skipCount++
-		                    break LineLoop
-		                }
-		            }
-	            }
-
-				searchCount++
-	            
-	            matches := splitStringAtAllMatches(line, regex)
-	            if matches != nil {
-	            	for _,triple := range matches {
-	            		matchCount++
-	            		column := len(triple.left) + leadingSpace
-						if p.listener != nil {
-							p.listener(f.path, triple.middle, lineNumber, column)
-						}
-
-						if p.quiet {
-							fmt.Fprintln(out, triple.middle)
-						} else {
-	                		fmt.Fprintf(out, "%s:%v:%v: %s%s%s%s%s\n", f.path, lineNumber, column, triple.left, AnsiMatch, triple.middle, AnsiReset, triple.right)
-	                	}
-	                }
-	            }
-	            lineNumber += 1
-	        }
-	        if err := scanner.Err(); err != nil && p.verbose {
-	        	reportError(false, "%s: %s\n", f.path, err.Error())
-	        }
+			searchFileContents(p, f, regex)
 		}      
     }
 }
@@ -314,16 +252,84 @@ func searchFilename(p FindParameters, f FileInfoWithPath, re *regexp.Regexp) {
 			}
 
 			if p.quiet {
-				fmt.Fprintln(out, triple.middle)
+				fmt.Fprintln(p.out, triple.middle)
 			} else {
 				path,_ := filepath.Split(f.path)
 				separatorIfDir := ""
 				if f.IsDir() {
 					separatorIfDir = string(os.PathSeparator)
 				}
-				   fmt.Fprintf(out, "%s%s%s%s%s%s%s\n", path, triple.left, AnsiMatch, triple.middle, AnsiReset, triple.right, separatorIfDir)
+				   fmt.Fprintf(p.out, "%s%s%s%s%s%s%s\n", path, triple.left, AnsiMatch, triple.middle, AnsiReset, triple.right, separatorIfDir)
 			   }
 		}
+	}
+}
+
+func searchFileContents(p FindParameters, f FileInfoWithPath, re *regexp.Regexp) {
+	if f.IsDir() || isSymlink(f) {
+		skipCount++
+		return
+	}
+
+	openedFile, err := os.Open(f.path)
+	if err != nil {
+		   if p.verbose {
+			   fmt.Fprintf(p.out, "%s%s%s\n", AnsiError, err.Error(), AnsiReset)
+		}
+		return
+	}
+	defer openedFile.Close()
+
+	scanner := bufio.NewScanner(openedFile)
+	
+	lineNumber := 1
+	for scanner.Scan() {
+
+		line := strings.TrimSpace(scanner.Text())
+
+		leadingSpace := 0
+		{
+			for _,r := range scanner.Text() {
+				if unicode.IsSpace(r) {
+					leadingSpace++
+				} else {
+					break
+				}
+			}
+		}
+		
+		if !p.noSkip {
+			for _, r := range line {
+				if r == '\000' {
+					// Files with non-printable chars, ie nullbytes, are skipped.
+					skipCount++
+					break
+				}
+			}
+		}
+
+		searchCount++
+		
+		matches := splitStringAtAllMatches(line, re)
+		if matches != nil {
+			for _,triple := range matches {
+				matchCount++
+				column := len(triple.left) + leadingSpace
+				if p.listener != nil {
+					p.listener(f.path, triple.middle, lineNumber, column)
+				}
+
+				if p.quiet {
+					fmt.Fprintln(p.out, triple.middle)
+				} else {
+					fmt.Fprintf(p.out, "%s:%v:%v: %s%s%s%s%s\n", f.path, lineNumber, column, triple.left, AnsiMatch, triple.middle, AnsiReset, triple.right)
+				}
+			}
+		}
+		lineNumber += 1
+	}
+	if err := scanner.Err(); err != nil && p.verbose {
+		reportError(false, "%s: %s\n", f.path, err.Error())
 	}
 }
 
@@ -372,13 +378,13 @@ func splitStringAtAllMatches(s string, re *regexp.Regexp) []StringTriple {
 	return nil
 }
 
-func getFileInfoWithPaths(paths []string, verbose bool, out io.Writer) []FileInfoWithPath {
+func getFileInfoWithPaths(p FindParameters, paths []string) []FileInfoWithPath {
 	var finfoAndPaths []FileInfoWithPath
     for _, path := range paths {
 		// If path is a symlink the target of the link will be read.
     	finfo, err := os.Stat(path)
     	if err != nil {
-    		if verbose {
+    		if p.verbose {
     			reportError(false, err.Error()+"\n")
 	        }
 			continue
@@ -386,7 +392,7 @@ func getFileInfoWithPaths(paths []string, verbose bool, out io.Writer) []FileInf
     	if finfo.IsDir() || isSymlink(finfo) {
 		    children, err := ioutil.ReadDir(path)
 		    if err != nil {
-		        if verbose {
+		        if p.verbose {
 		        	reportError(false, err.Error()+"\n")
 		        }
 		        continue
