@@ -49,6 +49,7 @@ const (
     DefaultVerbose      = false
     DefaultNoSkip       = false
     DefaultNoAnsiColor  = false
+    DefaultAbsPaths     = false
 
     HelpInfo         = "Display this message"
     RecursiveInfo    = "Search in subdirectories"
@@ -59,6 +60,7 @@ const (
     VerboseInfo      = "Print what files and directories are being skipped"
     NoSkipInfo       = "Search all files. Normally, binary files are skipped (ie those with nullbytes)."
     NoAnsiColorInfo  = "Disable ANSI coloring in the output"
+    AbsPathsInfo     = "Output absolute paths"
 )
 
 type FindParameters struct {
@@ -73,6 +75,7 @@ type FindParameters struct {
     verbose       bool
     noAnsiColor   bool
     noSkip        bool
+    absPaths      bool
     out           io.Writer
     listener      func(path string, match string, row int, column int)
 }
@@ -90,6 +93,7 @@ func NewFindParameters(regexString string) FindParameters {
         verbose:      DefaultVerbose,
         noAnsiColor:  DefaultNoAnsiColor,
         noSkip:       DefaultNoSkip,
+        absPaths:     DefaultAbsPaths,
         out:          os.Stdout,
         listener:     nil,
     }
@@ -101,7 +105,7 @@ type FileInfoWithPath struct {
 }
 
 func main() {
-    var p FindParameters
+    p := NewFindParameters("\\") // Invalid regexp, it must be correctly set later
 
     flag.Usage = func() {
         fmt.Fprintf(os.Stderr, "Usage of search: %s [options] regex [path...]\n", os.Args[0])
@@ -110,14 +114,15 @@ func main() {
     }
 
     flag.BoolVar  (&p.help,         "h",       DefaultHelp,         HelpInfo)
-     flag.BoolVar  (&p.recursive,    "r",       DefaultRecursive,    RecursiveInfo)
-     flag.StringVar(&p.filterString, "f",       DefaultFilterString, FilterStringInfo)
-     flag.BoolVar  (&p.fnamesOnly,   "n",       DefaultFnamesOnly,   FnamesOnlyInfo)
+    flag.BoolVar  (&p.recursive,    "r",       DefaultRecursive,    RecursiveInfo)
+    flag.StringVar(&p.filterString, "f",       DefaultFilterString, FilterStringInfo)
+    flag.BoolVar  (&p.fnamesOnly,   "n",       DefaultFnamesOnly,   FnamesOnlyInfo)
     flag.BoolVar  (&p.ignoreCase,   "i",       DefaultIgnoreCase,   IgnoreCaseInfo)
     flag.BoolVar  (&p.quiet,        "q",       DefaultQuiet,        QuietInfo)
     flag.BoolVar  (&p.verbose,      "v",       DefaultVerbose,      VerboseInfo)
     flag.BoolVar  (&p.noSkip,       "noskip",  DefaultNoSkip,       NoSkipInfo)
     flag.BoolVar  (&p.noAnsiColor,  "nocolor", DefaultNoAnsiColor,  NoAnsiColorInfo)
+    flag.BoolVar  (&p.absPaths,     "abs",     DefaultAbsPaths,     AbsPathsInfo)
     flag.Parse()
 
     if p.help {
@@ -385,10 +390,17 @@ func splitStringAtAllMatches(s string, re *regexp.Regexp) []StringTriple {
 }
 
 func getFileInfoWithPaths(p FindParameters, paths []string) []FileInfoWithPath {
-    var finfoAndPaths []FileInfoWithPath
+    var finfoWithPaths []FileInfoWithPath
+
+    add := func(finfoWithPath FileInfoWithPath) {
+        if p.absPaths {
+            finfoWithPath.path, _ = filepath.Abs(finfoWithPath.path)
+        }
+        finfoWithPaths = append(finfoWithPaths, finfoWithPath)
+    }
+
     for _, path := range paths {
-        // If path is a symlink the target of the link will be read.
-        finfo, err := os.Stat(path)
+        finfo, err := os.Stat(path) // Follows symlinks
         if err != nil {
             if p.verbose {
                 reportError(false, err.Error()+"\n")
@@ -403,14 +415,12 @@ func getFileInfoWithPaths(p FindParameters, paths []string) []FileInfoWithPath {
                 }
                 continue
             }
-            for _, f := range children {
-                finfoWithPath := FileInfoWithPath{f, filepath.Join(path, f.Name())}
-                finfoAndPaths = append(finfoAndPaths, finfoWithPath)
+            for _, child := range children {
+                add(FileInfoWithPath{child, filepath.Join(path, child.Name())})
             }
         } else {
-            finfoWithPath := FileInfoWithPath{finfo, path}
-            finfoAndPaths = append(finfoAndPaths, finfoWithPath)
+            add(FileInfoWithPath{finfo, path})
         }
     }
-    return finfoAndPaths
+    return finfoWithPaths
 }
