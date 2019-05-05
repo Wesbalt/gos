@@ -38,19 +38,7 @@ import (
     "io"
 )
 
-var DefaultPaths = []string{"."}
 const (
-    DefaultHelp         = false
-    DefaultRecursive    = false
-    DefaultFilterString = ""
-    DefaultFnamesOnly   = false
-    DefaultIgnoreCase   = false
-    DefaultQuiet        = false
-    DefaultVerbose      = false
-    DefaultNoSkip       = false
-    DefaultNoAnsiColor  = false
-    DefaultAbsPaths     = false
-
     HelpInfo         = "Display this message"
     RecursiveInfo    = "Search in subdirectories"
     FilterStringInfo = "Search only in files whose names match the given `regex`.\nAll directories are still followed in recursive mode."
@@ -82,18 +70,18 @@ type FindParameters struct {
 
 func NewFindParameters(regexString string) FindParameters {
     return FindParameters {
-        paths:        DefaultPaths,
+        paths:        []string{"."},
         regexString:  regexString,
-        help:         DefaultHelp,
-        recursive:    DefaultRecursive,
-        filterString: DefaultFilterString,
-        fnamesOnly:   DefaultFnamesOnly,
-        ignoreCase:   DefaultIgnoreCase,
-        quiet:        DefaultQuiet,
-        verbose:      DefaultVerbose,
-        noAnsiColor:  DefaultNoAnsiColor,
-        noSkip:       DefaultNoSkip,
-        absPaths:     DefaultAbsPaths,
+        help:         false,
+        recursive:    false,
+        filterString: "",
+        fnamesOnly:   false,
+        ignoreCase:   false,
+        quiet:        false,
+        verbose:      false,
+        noAnsiColor:  false,
+        noSkip:       false,
+        absPaths:     false,
         out:          os.Stdout,
         listener:     nil,
     }
@@ -113,16 +101,16 @@ func main() {
         flag.PrintDefaults()
     }
 
-    flag.BoolVar  (&p.help,         "h",       DefaultHelp,         HelpInfo)
-    flag.BoolVar  (&p.recursive,    "r",       DefaultRecursive,    RecursiveInfo)
-    flag.StringVar(&p.filterString, "f",       DefaultFilterString, FilterStringInfo)
-    flag.BoolVar  (&p.fnamesOnly,   "n",       DefaultFnamesOnly,   FnamesOnlyInfo)
-    flag.BoolVar  (&p.ignoreCase,   "i",       DefaultIgnoreCase,   IgnoreCaseInfo)
-    flag.BoolVar  (&p.quiet,        "q",       DefaultQuiet,        QuietInfo)
-    flag.BoolVar  (&p.verbose,      "v",       DefaultVerbose,      VerboseInfo)
-    flag.BoolVar  (&p.noSkip,       "noskip",  DefaultNoSkip,       NoSkipInfo)
-    flag.BoolVar  (&p.noAnsiColor,  "nocolor", DefaultNoAnsiColor,  NoAnsiColorInfo)
-    flag.BoolVar  (&p.absPaths,     "abs",     DefaultAbsPaths,     AbsPathsInfo)
+    flag.BoolVar  (&p.help,         "h",       p.help,         HelpInfo)
+    flag.BoolVar  (&p.recursive,    "r",       p.recursive,    RecursiveInfo)
+    flag.StringVar(&p.filterString, "f",       p.filterString, FilterStringInfo)
+    flag.BoolVar  (&p.fnamesOnly,   "n",       p.fnamesOnly,   FnamesOnlyInfo)
+    flag.BoolVar  (&p.ignoreCase,   "i",       p.ignoreCase,   IgnoreCaseInfo)
+    flag.BoolVar  (&p.quiet,        "q",       p.quiet,        QuietInfo)
+    flag.BoolVar  (&p.verbose,      "v",       p.verbose,      VerboseInfo)
+    flag.BoolVar  (&p.noSkip,       "noskip",  p.noSkip,       NoSkipInfo)
+    flag.BoolVar  (&p.noAnsiColor,  "nocolor", p.noAnsiColor,  NoAnsiColorInfo)
+    flag.BoolVar  (&p.absPaths,     "abs",     p.absPaths,     AbsPathsInfo)
     flag.Parse()
 
     if p.help {
@@ -135,7 +123,7 @@ func main() {
         os.Exit(1)
     } else if flag.NArg() == 1 {
         p.regexString = flag.Args()[0]
-        p.paths = DefaultPaths
+        p.paths = []string{"."} // Search in the CWD by default
     } else {
         p.regexString = flag.Args()[0]
         p.paths = flag.Args()[1:]
