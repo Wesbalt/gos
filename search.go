@@ -20,6 +20,12 @@ package main
  * Right now the program basically panics if the parameters don't
  * make sense. How about it returns an error instead? This could make
  * for easier testing of invalid parameters e.g. gos -v -q.
+ *
+ * Report if any of the supplied paths don't exist
+ *
+ * Error reporting is kind of a mess right now.
+ *
+ * Don't exit prematurely when testing (eg in the cleanup)
  */
 
 import (
@@ -38,59 +44,59 @@ import (
 
 var DefaultPaths = []string{"."}
 const (
-	DefaultHelp         = false
-	DefaultRecursive    = false
-	DefaultFilterString = ""
-	DefaultFnamesOnly   = false
-	DefaultIgnoreCase   = false
-	DefaultQuiet        = false
-	DefaultVerbose      = false
-	DefaultNoSkip       = false
-	DefaultNoAnsiColor  = false
+    DefaultHelp         = false
+    DefaultRecursive    = false
+    DefaultFilterString = ""
+    DefaultFnamesOnly   = false
+    DefaultIgnoreCase   = false
+    DefaultQuiet        = false
+    DefaultVerbose      = false
+    DefaultNoSkip       = false
+    DefaultNoAnsiColor  = false
 
-	HelpInfo         = "Display this message"
-	RecursiveInfo    = "Search in subdirectories"
-	FilterStringInfo = "Search only in files whose names match the given `regex`.\nAll directories are still followed in recursive mode."
-	FnamesOnlyInfo   = "Search for file and directory names instead of file contents"
-	IgnoreCaseInfo   = "Turn off case sensitivity"
-	QuietInfo        = "Print only the matches"
-	VerboseInfo      = "Print what files and directories are being skipped"
-	NoSkipInfo       = "Search all files. Normally, binary files are skipped (ie those with nullbytes)."
-	NoAnsiColorInfo  = "Disable ANSI coloring in the output"
+    HelpInfo         = "Display this message"
+    RecursiveInfo    = "Search in subdirectories"
+    FilterStringInfo = "Search only in files whose names match the given `regex`.\nAll directories are still followed in recursive mode."
+    FnamesOnlyInfo   = "Search for file and directory names instead of file contents"
+    IgnoreCaseInfo   = "Turn off case sensitivity"
+    QuietInfo        = "Print only the matches"
+    VerboseInfo      = "Print what files and directories are being skipped"
+    NoSkipInfo       = "Search all files. Normally, binary files are skipped (ie those with nullbytes)."
+    NoAnsiColorInfo  = "Disable ANSI coloring in the output"
 )
 
 type FindParameters struct {
-	paths         []string
-	regexString   string
-	help          bool
-	recursive     bool
-	filterString  string
-	fnamesOnly    bool
-	ignoreCase    bool
-	quiet         bool
-	verbose       bool
-	noAnsiColor   bool
-	noSkip        bool
-	out           io.Writer
-	listener      func(path string, match string, row int, column int)
+    paths         []string
+    regexString   string
+    help          bool
+    recursive     bool
+    filterString  string
+    fnamesOnly    bool
+    ignoreCase    bool
+    quiet         bool
+    verbose       bool
+    noAnsiColor   bool
+    noSkip        bool
+    out           io.Writer
+    listener      func(path string, match string, row int, column int)
 }
 
 func NewFindParameters(regexString string) FindParameters {
-	return FindParameters {
-		paths:        DefaultPaths,
-		regexString:  regexString,
-		help:         DefaultHelp,
-		recursive:    DefaultRecursive,
-		filterString: DefaultFilterString,
-		fnamesOnly:   DefaultFnamesOnly,
-		ignoreCase:   DefaultIgnoreCase,
-		quiet:        DefaultQuiet,
-		verbose:      DefaultVerbose,
-		noAnsiColor:  DefaultNoAnsiColor,
-		noSkip:       DefaultNoSkip,
-		out:          os.Stdout,
-		listener:     nil,
-	}
+    return FindParameters {
+        paths:        DefaultPaths,
+        regexString:  regexString,
+        help:         DefaultHelp,
+        recursive:    DefaultRecursive,
+        filterString: DefaultFilterString,
+        fnamesOnly:   DefaultFnamesOnly,
+        ignoreCase:   DefaultIgnoreCase,
+        quiet:        DefaultQuiet,
+        verbose:      DefaultVerbose,
+        noAnsiColor:  DefaultNoAnsiColor,
+        noSkip:       DefaultNoSkip,
+        out:          os.Stdout,
+        listener:     nil,
+    }
 }
 
 type FileInfoWithPath struct {
@@ -99,64 +105,64 @@ type FileInfoWithPath struct {
 }
 
 func main() {
-	var p FindParameters
+    var p FindParameters
 
-	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage of search: %s [options] regex [path...]\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "Options:\n")
-		flag.PrintDefaults()
-	}
+    flag.Usage = func() {
+        fmt.Fprintf(os.Stderr, "Usage of search: %s [options] regex [path...]\n", os.Args[0])
+        fmt.Fprintf(os.Stderr, "Options:\n")
+        flag.PrintDefaults()
+    }
 
-	flag.BoolVar  (&p.help,         "h",          DefaultHelp,         HelpInfo)
- 	flag.BoolVar  (&p.recursive,    "r",          DefaultRecursive,    RecursiveInfo)
- 	flag.StringVar(&p.filterString, "f",          DefaultFilterString, FilterStringInfo)
- 	flag.BoolVar  (&p.fnamesOnly,   "n",          DefaultFnamesOnly,   FnamesOnlyInfo)
-	flag.BoolVar  (&p.ignoreCase,   "i",          DefaultIgnoreCase,   IgnoreCaseInfo)
-	flag.BoolVar  (&p.quiet,        "q",          DefaultQuiet,        QuietInfo)
-	flag.BoolVar  (&p.verbose,      "v",          DefaultVerbose,      VerboseInfo)
-	flag.BoolVar  (&p.noSkip,       "noskip",     DefaultNoSkip,       NoSkipInfo)
-	flag.BoolVar  (&p.noAnsiColor,  "nocolor",    DefaultNoAnsiColor,  NoAnsiColorInfo)
-	flag.Parse()
+    flag.BoolVar  (&p.help,         "h",       DefaultHelp,         HelpInfo)
+     flag.BoolVar  (&p.recursive,    "r",       DefaultRecursive,    RecursiveInfo)
+     flag.StringVar(&p.filterString, "f",       DefaultFilterString, FilterStringInfo)
+     flag.BoolVar  (&p.fnamesOnly,   "n",       DefaultFnamesOnly,   FnamesOnlyInfo)
+    flag.BoolVar  (&p.ignoreCase,   "i",       DefaultIgnoreCase,   IgnoreCaseInfo)
+    flag.BoolVar  (&p.quiet,        "q",       DefaultQuiet,        QuietInfo)
+    flag.BoolVar  (&p.verbose,      "v",       DefaultVerbose,      VerboseInfo)
+    flag.BoolVar  (&p.noSkip,       "noskip",  DefaultNoSkip,       NoSkipInfo)
+    flag.BoolVar  (&p.noAnsiColor,  "nocolor", DefaultNoAnsiColor,  NoAnsiColorInfo)
+    flag.Parse()
 
-	if p.help {
-		flag.Usage()
-		os.Exit(0)
-	}
+    if p.help {
+        flag.Usage()
+        os.Exit(0)
+    }
 
-	if flag.NArg() == 0 {
-		flag.Usage()
-		os.Exit(1)
-	} else if flag.NArg() == 1 {
-		p.regexString = flag.Args()[0]
-		p.paths = DefaultPaths
-	} else {
-		p.regexString = flag.Args()[0]
-		p.paths = flag.Args()[1:]
-	}
+    if flag.NArg() == 0 {
+        flag.Usage()
+        os.Exit(1)
+    } else if flag.NArg() == 1 {
+        p.regexString = flag.Args()[0]
+        p.paths = DefaultPaths
+    } else {
+        p.regexString = flag.Args()[0]
+        p.paths = flag.Args()[1:]
+    }
 
-	done := func(interrupted bool) {
-		msg := "Complete."
-		code := 0
-		if interrupted {
-		  msg = "Interrupted by user."
-		  code = 1
-		}
-		fmt.Printf("%s%s %v matched, %v searched, %v discovered, %v skipped.", AnsiReset, msg, matchCount, searchCount, discoverCount, skipCount)
-		os.Exit(code)
-	}
+    done := func(interrupted bool) {
+        msg := "Complete."
+        code := 0
+        if interrupted {
+          msg = "Interrupted by user."
+          code = 1
+        }
+        fmt.Printf("%s%s %v matched, %v searched, %v discovered, %v skipped.", AnsiReset, msg, matchCount, searchCount, discoverCount, skipCount)
+        os.Exit(code)
+    }
 
-	{ // Make and run a channel that detects interrupts
-		c := make(chan os.Signal, 1)
-		signal.Notify(c, os.Interrupt)
-		go func() {
-			for range c {
-				done(true)
-			}
-		}()
-	}
+    { // Make and run a channel that detects interrupts
+        c := make(chan os.Signal, 1)
+        signal.Notify(c, os.Interrupt)
+        go func() {
+            for range c {
+                done(true)
+            }
+        }()
+    }
 
-	find(p)
-	done(false)
+    find(p)
+    done(false)
 }
 
 var matchCount    = 0
@@ -168,11 +174,11 @@ func reportError(exit bool, fstring string, args ...interface{}) {
 //	if len(args) == 0 {
 //		fmt.Fprintf(os.Stderr, AnsiError+fstring+AnsiReset)
 //	} else {
-		fmt.Fprintf(os.Stderr, AnsiError+fstring+AnsiReset, args...)
+        fmt.Fprintf(os.Stderr, AnsiError+fstring+AnsiReset, args...)
 //	}
-	if exit {
-		os.Exit(1)
-	}
+    if exit {
+        os.Exit(1)
+    }
 }
 
 // ANSI escape sequences. See the link for available parameters.
@@ -183,31 +189,31 @@ var AnsiMatch = "\033[92;4m"
 
 func find(p FindParameters) {
 
-	if p.quiet && p.verbose {
-		reportError(true, "The quiet and verbose modes are mutually exclusive.\n")
-	}
-	
-	if p.filterString != "" && p.fnamesOnly {
-		reportError(true, "Using the filter while searching for filenames is redundant.\n")
-	}
-	var maybeIgnoreCase = ""
-	if p.ignoreCase {
-		maybeIgnoreCase = "(?i)"
-	}
+    if p.quiet && p.verbose {
+        reportError(true, "The quiet and verbose modes are mutually exclusive.\n")
+    }
+    
+    if p.filterString != "" && p.fnamesOnly {
+        reportError(true, "Using the filter while searching for filenames is redundant.\n")
+    }
+    var maybeIgnoreCase = ""
+    if p.ignoreCase {
+        maybeIgnoreCase = "(?i)"
+    }
 
-	if p.noAnsiColor {
-		AnsiReset = ""
-		AnsiError = ""
-		AnsiMatch = ""
-	}
+    if p.noAnsiColor {
+        AnsiReset = ""
+        AnsiError = ""
+        AnsiMatch = ""
+    }
 
     regex, err := regexp.Compile(maybeIgnoreCase+p.regexString)
     if err != nil {
-		reportError(true, "Bad mandatory regex: %s\n", err.Error())
+        reportError(true, "Bad mandatory regex: %s\n", err.Error())
     }
     filter, err := regexp.Compile(maybeIgnoreCase+p.filterString)
     if err != nil {
-		reportError(true, "Bad filter regex: %s\n", err.Error())
+        reportError(true, "Bad filter regex: %s\n", err.Error())
     }
 
     queue := getFileInfoWithPaths(p, p.paths)
@@ -222,134 +228,132 @@ func find(p FindParameters) {
             children := getFileInfoWithPaths(p, []string{f.path})
             // Appending the children makes the search method BFS. If they were
             // prepended it would be DFS. I don't know what the best decision is.
-           	queue = append(queue, children...)
+               queue = append(queue, children...)
         }
 
-		if p.filterString != "" && !filter.MatchString(f.Name()) {
-			skipCount++
-			if p.verbose {
-				reportError(false, "Skipping %s\n", f.Name())
-			}
-			continue
-		}
+        if p.filterString != "" && !filter.MatchString(f.Name()) {
+            skipCount++
+            if p.verbose {
+                reportError(false, "Skipping %s\n", f.Name())
+            }
+            continue
+        }
 
-		if p.fnamesOnly {
-			searchFilename(p, f, regex)
-		} else {
-			searchFileContents(p, f, regex)
-		}      
+        if p.fnamesOnly {
+            searchFilename(p, f, regex)
+        } else {
+            searchFileContents(p, f, regex)
+        }      
     }
 }
 
 func searchFilename(p FindParameters, f FileInfoWithPath, re *regexp.Regexp) {
-	searchCount++
-	matches := splitStringAtAllMatches(f.Name(), re)
-	if matches != nil {
-		for _,triple := range matches {
-			matchCount++
-			if p.listener != nil {
-				p.listener(f.path, triple.middle, -1, -1)
-			}
+    searchCount++
+    matches := splitStringAtAllMatches(f.Name(), re)
+    if matches != nil {
+        for _,triple := range matches {
+            matchCount++
+            if p.listener != nil {
+                p.listener(f.path, triple.middle, -1, -1)
+            }
 
-			if p.quiet {
-				fmt.Fprintln(p.out, triple.middle)
-			} else {
-				path,_ := filepath.Split(f.path)
-				separatorIfDir := ""
-				if f.IsDir() {
-					separatorIfDir = string(os.PathSeparator)
-				}
-				   fmt.Fprintf(p.out, "%s%s%s%s%s%s%s\n", path, triple.left, AnsiMatch, triple.middle, AnsiReset, triple.right, separatorIfDir)
-			   }
-		}
-	}
+            if p.quiet {
+                fmt.Fprintln(p.out, triple.middle)
+            } else {
+                path,_ := filepath.Split(f.path)
+                separatorIfDir := ""
+                if f.IsDir() {
+                    separatorIfDir = string(os.PathSeparator)
+                }
+                fmt.Fprintf(p.out, "%s%s%s%s%s%s%s\n", path, triple.left, AnsiMatch, triple.middle, AnsiReset, triple.right, separatorIfDir)
+            }
+        }
+    }
 }
 
 func searchFileContents(p FindParameters, f FileInfoWithPath, re *regexp.Regexp) {
-	if f.IsDir() || isSymlink(f) {
-		skipCount++
-		return
-	}
+    if f.IsDir() || isSymlink(f) {
+        skipCount++
+        return
+    }
 
-	openedFile, err := os.Open(f.path)
-	if err != nil {
-		   if p.verbose {
-			   fmt.Fprintf(p.out, "%s%s%s\n", AnsiError, err.Error(), AnsiReset)
-		}
-		return
-	}
-	defer openedFile.Close()
+    openedFile, err := os.Open(f.path)
+    if err != nil {
+        if p.verbose {
+            fmt.Fprintf(p.out, "%s%s%s\n", AnsiError, err.Error(), AnsiReset)
+        }
+        return
+    }
+    defer openedFile.Close()
 
-	scanner := bufio.NewScanner(openedFile)
-	
-	lineNumber := 1
-	for scanner.Scan() {
+    scanner := bufio.NewScanner(openedFile)
+    
+    lineNumber := 1
+    for scanner.Scan() {
 
-		line := strings.TrimSpace(scanner.Text())
+        line := strings.TrimSpace(scanner.Text())
 
-		leadingSpace := 0
-		{
-			for _,r := range scanner.Text() {
-				if unicode.IsSpace(r) {
-					leadingSpace++
-				} else {
-					break
-				}
-			}
-		}
-		
-		if !p.noSkip {
-			for _, r := range line {
-				if r == '\000' {
-					// Files with non-printable chars, ie nullbytes, are skipped.
-					skipCount++
-					break
-				}
-			}
-		}
+        leadingSpace := 0
+        for _,r := range scanner.Text() {
+            if unicode.IsSpace(r) {
+                leadingSpace++
+            } else {
+                break
+            }
+        }
+        
+        if !p.noSkip {
+            for _, r := range line {
+                if r == '\000' {
+                    // Files with non-printable chars, ie nullbytes, are skipped.
+                    skipCount++
+                    break
+                }
+            }
+        }
 
-		searchCount++
-		
-		matches := splitStringAtAllMatches(line, re)
-		if matches != nil {
-			for _,triple := range matches {
-				matchCount++
-				column := len(triple.left) + leadingSpace
-				if p.listener != nil {
-					p.listener(f.path, triple.middle, lineNumber, column)
-				}
+        searchCount++
+        
+        matches := splitStringAtAllMatches(line, re)
+        if matches != nil {
+            for _,triple := range matches {
+                matchCount++
+                column := len(triple.left) + leadingSpace
+                if p.listener != nil {
+                    p.listener(f.path, triple.middle, lineNumber, column)
+                }
 
-				if p.quiet {
-					fmt.Fprintln(p.out, triple.middle)
-				} else {
-					fmt.Fprintf(p.out, "%s:%v:%v: %s%s%s%s%s\n", f.path, lineNumber, column, triple.left, AnsiMatch, triple.middle, AnsiReset, triple.right)
-				}
-			}
-		}
-		lineNumber += 1
-	}
-	if err := scanner.Err(); err != nil && p.verbose {
-		reportError(false, "%s: %s\n", f.path, err.Error())
-	}
+                if p.quiet {
+                    fmt.Fprintln(p.out, triple.middle)
+                } else {
+                    fmt.Fprintf(p.out, "%s:%v:%v: %s%s%s%s%s\n", f.path, lineNumber, column, triple.left, AnsiMatch, triple.middle, AnsiReset, triple.right)
+                }
+            }
+        }
+        lineNumber += 1
+    }
+    if err := scanner.Err(); err != nil && p.verbose {
+        reportError(false, "%s: %s\n", f.path, err.Error())
+    }
 }
 
 func isDirOrSymlinkPointingToDir(f FileInfoWithPath) bool {
 //	fmt.Printf("is %s a symlink? %t\n", f.path, isSymlink(f))
-	return f.IsDir() || isSymlink(f)
+    return f.IsDir() || isSymlink(f)
 }
 
 func isSymlink(f os.FileInfo) bool {
-	return f.Mode() & os.ModeSymlink != 0
+    return f.Mode() & os.ModeSymlink != 0
 }
 
 type StringTriple struct {
-	left   string
-	middle string
-	right  string
+    left   string
+    middle string
+    right  string
 }
 
 func (s StringTriple) String() string {
-	return fmt.Sprintf("(\"%s\",\"%s\",\"%s\")", s.left, s.middle, s.right)
+    return fmt.Sprintf("(\"%s\",\"%s\",\"%s\")", s.left, s.middle, s.right)
 }
 
 /*
@@ -359,52 +363,52 @@ func (s StringTriple) String() string {
  * Returns nil if there is no match.
  */
 func splitStringAtAllMatches(s string, re *regexp.Regexp) []StringTriple {
-	matches := re.FindAllStringIndex(s, -1) // -1 means we want all the matches on the line
-	if matches != nil {
-		triples := []StringTriple{}
-		for i := range matches {
-			// Matches is a matrix where each row corresponds to one match
-			// matches[i][0] is the beginning of ith match
-			// matches[i][1] is the end of ith match
-			triple := StringTriple {
-				s[:matches[i][0]],
-				s[matches[i][0]:matches[i][1]],
-				s[matches[i][1]:], // Go, why does having this comma matter?
-			}
-			triples = append(triples, triple)
-		}
-		return triples
-	}
-	return nil
+    matches := re.FindAllStringIndex(s, -1) // -1 means we want all the matches on the line
+    if matches != nil {
+        triples := []StringTriple{}
+        for i := range matches {
+            // Matches is a matrix where each row corresponds to one match
+            // matches[i][0] is the beginning of ith match
+            // matches[i][1] is the end of ith match
+            triple := StringTriple {
+                s[:matches[i][0]],
+                s[matches[i][0]:matches[i][1]],
+                s[matches[i][1]:],
+            }
+            triples = append(triples, triple)
+        }
+        return triples
+    }
+    return nil
 }
 
 func getFileInfoWithPaths(p FindParameters, paths []string) []FileInfoWithPath {
-	var finfoAndPaths []FileInfoWithPath
+    var finfoAndPaths []FileInfoWithPath
     for _, path := range paths {
-		// If path is a symlink the target of the link will be read.
-    	finfo, err := os.Stat(path)
-    	if err != nil {
-    		if p.verbose {
-    			reportError(false, err.Error()+"\n")
-	        }
-			continue
-    	}
-    	if finfo.IsDir() || isSymlink(finfo) {
-		    children, err := ioutil.ReadDir(path)
-		    if err != nil {
-		        if p.verbose {
-		        	reportError(false, err.Error()+"\n")
-		        }
-		        continue
-		    }
-		    for _, f := range children {
-		        finfoWithPath := FileInfoWithPath{f, filepath.Join(path, f.Name())}
-		        finfoAndPaths = append(finfoAndPaths, finfoWithPath)
-		    }
-		} else {
-		    finfoWithPath := FileInfoWithPath{finfo, path}
+        // If path is a symlink the target of the link will be read.
+        finfo, err := os.Stat(path)
+        if err != nil {
+            if p.verbose {
+                reportError(false, err.Error()+"\n")
+            }
+            continue
+        }
+        if finfo.IsDir() || isSymlink(finfo) {
+            children, err := ioutil.ReadDir(path)
+            if err != nil {
+                if p.verbose {
+                    reportError(false, err.Error()+"\n")
+                }
+                continue
+            }
+            for _, f := range children {
+                finfoWithPath := FileInfoWithPath{f, filepath.Join(path, f.Name())}
+                finfoAndPaths = append(finfoAndPaths, finfoWithPath)
+            }
+        } else {
+            finfoWithPath := FileInfoWithPath{finfo, path}
             finfoAndPaths = append(finfoAndPaths, finfoWithPath)
-		}
+        }
     }
     return finfoAndPaths
 }
