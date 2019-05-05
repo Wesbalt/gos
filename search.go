@@ -17,10 +17,6 @@ package main
  *
  * Should matchCount, searchCount, discoverCount and skipCount be tested?
  *
- * Right now the program basically panics if the parameters don't
- * make sense. How about it returns an error instead? This could make
- * for easier testing of invalid parameters e.g. gos -v -q.
- *
  * Report if any of the supplied paths don't exist
  *
  * Error reporting is kind of a mess right now.
@@ -161,8 +157,13 @@ func main() {
         }()
     }
 
-    find(p)
-    done(false)
+    success, message := find(p)
+    if !success {
+        fmt.Fprintln(os.Stderr, AnsiError + message + AnsiReset)
+        os.Exit(1)
+    } else {
+        done(false)
+    }
 }
 
 var matchCount    = 0
@@ -187,14 +188,14 @@ var AnsiReset = "\033[0m"
 var AnsiError = "\033[91m"
 var AnsiMatch = "\033[92;4m"
 
-func find(p FindParameters) {
+func find(p FindParameters) (bool, string) {
 
     if p.quiet && p.verbose {
-        reportError(true, "The quiet and verbose modes are mutually exclusive.\n")
+        return false, "The quiet and verbose modes are mutually exclusive."
     }
     
     if p.filterString != "" && p.fnamesOnly {
-        reportError(true, "Using the filter while searching for filenames is redundant.\n")
+        return false, "Using the filter while searching for filenames is redundant."
     }
     var maybeIgnoreCase = ""
     if p.ignoreCase {
@@ -209,11 +210,11 @@ func find(p FindParameters) {
 
     regex, err := regexp.Compile(maybeIgnoreCase+p.regexString)
     if err != nil {
-        reportError(true, "Bad mandatory regex: %s\n", err.Error())
+        return false, fmt.Sprintf("Bad mandatory regex: %s", err.Error())
     }
     filter, err := regexp.Compile(maybeIgnoreCase+p.filterString)
     if err != nil {
-        reportError(true, "Bad filter regex: %s\n", err.Error())
+        return false, fmt.Sprintf("Bad filter regex: %s", err.Error())
     }
 
     queue := getFileInfoWithPaths(p, p.paths)
@@ -228,7 +229,7 @@ func find(p FindParameters) {
             children := getFileInfoWithPaths(p, []string{f.path})
             // Appending the children makes the search method BFS. If they were
             // prepended it would be DFS. I don't know what the best decision is.
-               queue = append(queue, children...)
+            queue = append(queue, children...)
         }
 
         if p.filterString != "" && !filter.MatchString(f.Name()) {
@@ -245,6 +246,7 @@ func find(p FindParameters) {
             searchFileContents(p, f, regex)
         }      
     }
+    return true, ""
 }
 
 func searchFilename(p FindParameters, f FileInfoWithPath, re *regexp.Regexp) {

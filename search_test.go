@@ -21,6 +21,7 @@ import (
  * Searching an exe due to explicitly mentioning it (?)
  * Match multiple things in one line
  * Match at end of line (to test off-by-one)
+ * Test whether giving mutually exclusive flags to gos returns an error.
  */
 
 const (
