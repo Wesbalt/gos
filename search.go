@@ -307,7 +307,7 @@ func searchFileContents(p FindParameters, f FileInfoWithPath, re *regexp.Regexp)
                 if r == '\000' {
                     // Files with non-printable chars, ie nullbytes, are skipped.
                     skipCount++
-                    break
+                    return
                 }
             }
         }

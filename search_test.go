@@ -24,7 +24,7 @@ import (
  */
 
 const (
-    DoCleanup   = true
+    DoCleanup   = false
     OutputFname = "gos_output.txt"
     TempTestDir = "testdir"
 )
@@ -128,8 +128,6 @@ func SplitPath(path string) []string {
 }
 
 func Expect(t *testing.T, params FindParameters, expected []Match) {
-    //fmt.Printf("%+v\n", params)
-
     params.out = out
     params.listener = func(path string, match string, row int, column int) {
         actual := Match {path, match, row, column}
