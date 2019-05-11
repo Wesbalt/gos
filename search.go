@@ -22,6 +22,9 @@ package main
  * Error reporting is kind of a mess right now.
  *
  * Don't exit prematurely when testing (eg in the cleanup)
+ *
+ * Consider the command "gos -r foo/bar foo" where foo and bar are directories.
+ * Would this search bar twice? That wouldn't be good.
  */
 
 import (
@@ -150,13 +153,6 @@ func main() {
         }()
     }
 
-    //c := make(chan FileInfoWithPath)
-    //go discoverFilesShallow(c, p)
-    //for finfo := range c {
-	//	fmt.Println(finfo)
-    //}
-    //panic("")
-
     success, message := find(p)
     if !success {
         fmt.Fprintln(os.Stderr, AnsiError + message + AnsiReset)
@@ -188,41 +184,40 @@ var AnsiReset = "\033[0m"
 var AnsiError = "\033[91m"
 var AnsiMatch = "\033[92;4m"
 
-func discoverFilesShallow(c chan FileInfoWithPath, p FindParameters) {
-    add := func(finfoWithPath FileInfoWithPath) {
-        if p.absPaths {
-            finfoWithPath.path, _ = filepath.Abs(finfoWithPath.path)
-        }
-        c <- finfoWithPath
-    }
-
-    for _, path := range p.paths {
-        finfo, err := os.Stat(path) // Follows symlinks
+func discoverFilesShallow(fileChan chan FileInfoWithPath, paths []string) {
+    for _, path := range paths {
+        f, err := os.Stat(path) // Follows symlinks
         if err != nil {
-            if p.verbose {
-                reportError(false, err.Error()+"\n")
-            }
-            continue
+            return // @TODO report error
         }
-        if finfo.IsDir() || isSymlink(finfo) {
+        if f.IsDir() {
             children, err := ioutil.ReadDir(path)
             if err != nil {
-                if p.verbose {
-                    reportError(false, err.Error()+"\n")
-                }
-                continue
+                return // @TODO report error
             }
             for _, child := range children {
-                add(FileInfoWithPath{child, filepath.Join(path, child.Name())})
+                fileChan <- FileInfoWithPath{child, filepath.Join(path, child.Name())} 
             }
         } else {
-            add(FileInfoWithPath{finfo, path})
+            fileChan <- FileInfoWithPath{f, path}
         }
     }
-    close(c)
+    close(fileChan)
 }
 
-func discoverFilesRecursive() {
+func discoverFilesRecursive(fileChan chan FileInfoWithPath, paths []string) {
+    for len(paths) > 0 {
+        shallowChan := make(chan FileInfoWithPath)
+        go discoverFilesShallow(shallowChan, paths)
+        paths = []string{}
+        for f := range shallowChan {
+            fileChan <- f
+            if f.IsDir() {
+                paths = append(paths, f.path)
+            }
+        }
+    }
+    close(fileChan)
 }
 
 func find(p FindParameters) (bool, string) {
@@ -254,11 +249,15 @@ func find(p FindParameters) (bool, string) {
     }
 
     c := make(chan FileInfoWithPath)
-    go discoverFilesShallow(c, p)
+    if p.recursive {
+        go discoverFilesRecursive(c, p.paths)
+    } else {
+        go discoverFilesShallow(c, p.paths)
+    }
 
     for f := range c {
         discoverCount++
-       
+
         if p.filterString != "" && !filter.MatchString(f.Name()) {
             skipCount++
             if p.verbose {
@@ -409,40 +408,4 @@ func splitStringAtAllMatches(s string, re *regexp.Regexp) []StringTriple {
         return triples
     }
     return nil
-}
-
-func getFileInfoWithPaths(p FindParameters, paths []string) []FileInfoWithPath {
-    var finfoWithPaths []FileInfoWithPath
-
-    add := func(finfoWithPath FileInfoWithPath) {
-        if p.absPaths {
-            finfoWithPath.path, _ = filepath.Abs(finfoWithPath.path)
-        }
-        finfoWithPaths = append(finfoWithPaths, finfoWithPath)
-    }
-
-    for _, path := range paths {
-        finfo, err := os.Stat(path) // Follows symlinks
-        if err != nil {
-            if p.verbose {
-                reportError(false, err.Error()+"\n")
-            }
-            continue
-        }
-        if finfo.IsDir() || isSymlink(finfo) {
-            children, err := ioutil.ReadDir(path)
-            if err != nil {
-                if p.verbose {
-                    reportError(false, err.Error()+"\n")
-                }
-                continue
-            }
-            for _, child := range children {
-                add(FileInfoWithPath{child, filepath.Join(path, child.Name())})
-            }
-        } else {
-            add(FileInfoWithPath{finfo, path})
-        }
-    }
-    return finfoWithPaths
 }
