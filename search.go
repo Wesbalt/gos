@@ -226,7 +226,6 @@ func discoverFilesRecursive() {
 }
 
 func find(p FindParameters) (bool, string) {
-
     if p.quiet && p.verbose {
         return false, "The quiet and verbose modes are mutually exclusive."
     }
@@ -254,21 +253,12 @@ func find(p FindParameters) (bool, string) {
         return false, fmt.Sprintf("Bad filter regex: %s", err.Error())
     }
 
-    queue := getFileInfoWithPaths(p, p.paths)
+    c := make(chan FileInfoWithPath)
+    go discoverFilesShallow(c, p)
 
-    for len(queue) > 0 {
-
-        f := queue[0]
-        queue = queue[1:]
+    for f := range c {
         discoverCount++
-        
-        if isDirOrSymlinkPointingToDir(f) && p.recursive {
-            children := getFileInfoWithPaths(p, []string{f.path})
-            // Appending the children makes the search method BFS. If they were
-            // prepended it would be DFS. I don't know what the best decision is.
-            queue = append(queue, children...)
-        }
-
+       
         if p.filterString != "" && !filter.MatchString(f.Name()) {
             skipCount++
             if p.verbose {
