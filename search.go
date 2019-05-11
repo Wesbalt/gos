@@ -150,6 +150,13 @@ func main() {
         }()
     }
 
+    //c := make(chan FileInfoWithPath)
+    //go discoverFilesShallow(c, p)
+    //for finfo := range c {
+	//	fmt.Println(finfo)
+    //}
+    //panic("")
+
     success, message := find(p)
     if !success {
         fmt.Fprintln(os.Stderr, AnsiError + message + AnsiReset)
@@ -180,6 +187,43 @@ func reportError(exit bool, fstring string, args ...interface{}) {
 var AnsiReset = "\033[0m"
 var AnsiError = "\033[91m"
 var AnsiMatch = "\033[92;4m"
+
+func discoverFilesShallow(c chan FileInfoWithPath, p FindParameters) {
+    add := func(finfoWithPath FileInfoWithPath) {
+        if p.absPaths {
+            finfoWithPath.path, _ = filepath.Abs(finfoWithPath.path)
+        }
+        c <- finfoWithPath
+    }
+
+    for _, path := range p.paths {
+        finfo, err := os.Stat(path) // Follows symlinks
+        if err != nil {
+            if p.verbose {
+                reportError(false, err.Error()+"\n")
+            }
+            continue
+        }
+        if finfo.IsDir() || isSymlink(finfo) {
+            children, err := ioutil.ReadDir(path)
+            if err != nil {
+                if p.verbose {
+                    reportError(false, err.Error()+"\n")
+                }
+                continue
+            }
+            for _, child := range children {
+                add(FileInfoWithPath{child, filepath.Join(path, child.Name())})
+            }
+        } else {
+            add(FileInfoWithPath{finfo, path})
+        }
+    }
+    close(c)
+}
+
+func discoverFilesRecursive() {
+}
 
 func find(p FindParameters) (bool, string) {
 
