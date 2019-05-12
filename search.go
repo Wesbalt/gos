@@ -15,8 +15,6 @@ package main
  *
  * Add -examples to print example usages
  *
- * Should matchCount, searchCount, discoverCount and skipCount be tested?
- *
  * Report if any of the supplied paths don't exist
  *
  * Error reporting is kind of a mess right now.
@@ -25,6 +23,8 @@ package main
  *
  * Consider the command "gos -r foo/bar foo" where foo and bar are directories.
  * Would this search bar twice? That wouldn't be good.
+ *
+ * Maybe add support for reading from stdin like grep does.
  */
 
 import (
@@ -50,7 +50,7 @@ const (
     QuietInfo        = "Print only the matches"
     VerboseInfo      = "Print what files and directories are being skipped"
     NoSkipInfo       = "Search all files. Normally, binary files are skipped (ie those with nullbytes)."
-    NoAnsiColorInfo  = "Disable ANSI coloring in the output"
+    NoAnsiColorInfo  = "Disable ANSI colored output"
     AbsPathsInfo     = "Output absolute paths"
 )
 
@@ -99,7 +99,7 @@ func main() {
     gos := DefaultGosParameters("\\") // Invalid regexp, it must be correctly set later
 
     flag.Usage = func() {
-        fmt.Fprintf(os.Stderr, "Usage of search: %s [options] regex [path...]\n", os.Args[0])
+        fmt.Fprintf(os.Stderr, "Usage: %s [options] regex [path...]\n", os.Args[0])
         fmt.Fprintf(os.Stderr, "Options:\n")
         flag.PrintDefaults()
     }
@@ -132,40 +132,24 @@ func main() {
         gos.Paths = flag.Args()[1:]
     }
 
-    done := func(interrupted bool) {
-        msg := "Complete."
-        code := 0
-        if interrupted {
-          msg = "Interrupted by user."
-          code = 1
-        }
-        fmt.Printf("%s%s %v matched, %v searched, %v discovered, %v skipped.", AnsiReset, msg, matchCount, searchCount, discoverCount, skipCount)
-        os.Exit(code)
-    }
-
     { // Make and run a channel that detects interrupts
         c := make(chan os.Signal, 1)
         signal.Notify(c, os.Interrupt)
         go func() {
             for range c {
-                done(true)
+                fmt.Fprintf(gos.Out, "%sInterrupted by user.%s\n", AnsiError, AnsiReset)
+                os.Exit(0)
             }
-        }()
+        } ()
     }
 
     success, message := GoOnSearch(gos)
     if !success {
         fmt.Fprintln(os.Stderr, AnsiError + message + AnsiReset)
         os.Exit(1)
-    } else {
-        done(false)
     }
+    os.Exit(0)
 }
-
-var matchCount    = 0
-var searchCount   = 0
-var discoverCount = 0
-var skipCount     = 0
 
 func reportError(exit bool, fstring string, args ...interface{}) {
 //	if len(args) == 0 {
@@ -256,10 +240,7 @@ func GoOnSearch(gos GosParameters) (bool, string) {
     }
 
     for f := range c {
-        discoverCount++
-
         if gos.FilterString != "" && !filter.MatchString(f.Name()) {
-            skipCount++
             if gos.Verbose {
                 reportError(false, "Skipping %s\n", f.Name())
             }
@@ -276,11 +257,9 @@ func GoOnSearch(gos GosParameters) (bool, string) {
 }
 
 func searchFilename(gos GosParameters, f FileInfoWithPath, re *regexp.Regexp) {
-    searchCount++
     matches := splitStringAtAllMatches(f.Name(), re)
     if matches != nil {
         for _,triple := range matches {
-            matchCount++
             if gos.Listener != nil {
                 gos.Listener(f.Path, triple.Middle, -1, -1)
             }
@@ -301,7 +280,6 @@ func searchFilename(gos GosParameters, f FileInfoWithPath, re *regexp.Regexp) {
 
 func searchFileContents(gos GosParameters, f FileInfoWithPath, re *regexp.Regexp) {
     if f.IsDir() || isSymlink(f) {
-        skipCount++
         return
     }
 
@@ -334,18 +312,14 @@ func searchFileContents(gos GosParameters, f FileInfoWithPath, re *regexp.Regexp
             for _, r := range line {
                 if r == '\000' {
                     // Files with non-printable chars, ie nullbytes, are skipped.
-                    skipCount++
                     return
                 }
             }
         }
 
-        searchCount++
-        
         matches := splitStringAtAllMatches(line, re)
         if matches != nil {
             for _,triple := range matches {
-                matchCount++
                 column := len(triple.Left) + leadingSpace
                 if gos.Listener != nil {
                     gos.Listener(f.Path, triple.Middle, lineNumber, column)
