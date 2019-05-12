@@ -55,44 +55,44 @@ const (
 )
 
 type FindParameters struct {
-    paths         []string
-    regexString   string
-    help          bool
-    recursive     bool
-    filterString  string
-    fnamesOnly    bool
-    ignoreCase    bool
-    quiet         bool
-    verbose       bool
-    noAnsiColor   bool
-    noSkip        bool
-    absPaths      bool
-    out           io.Writer
-    listener      func(path string, match string, row int, column int)
+    Paths         []string
+    RegexString   string
+    Help          bool
+    Recursive     bool
+    FilterString  string
+    FnamesOnly    bool
+    IgnoreCase    bool
+    Quiet         bool
+    Verbose       bool
+    NoAnsiColor   bool
+    NoSkip        bool
+    AbsPaths      bool
+    Out           io.Writer
+    Listener      func(path string, match string, row int, column int)
 }
 
 func NewFindParameters(regexString string) FindParameters {
     return FindParameters {
-        paths:        []string{"."},
-        regexString:  regexString,
-        help:         false,
-        recursive:    false,
-        filterString: "",
-        fnamesOnly:   false,
-        ignoreCase:   false,
-        quiet:        false,
-        verbose:      false,
-        noAnsiColor:  false,
-        noSkip:       false,
-        absPaths:     false,
-        out:          os.Stdout,
-        listener:     nil,
+        Paths:        []string{"."},
+        RegexString:  regexString,
+        Help:         false,
+        Recursive:    false,
+        FilterString: "",
+        FnamesOnly:   false,
+        IgnoreCase:   false,
+        Quiet:        false,
+        Verbose:      false,
+        NoAnsiColor:  false,
+        NoSkip:       false,
+        AbsPaths:     false,
+        Out:          os.Stdout,
+        Listener:     nil,
     }
 }
 
 type FileInfoWithPath struct {
     os.FileInfo
-    path string
+    Path string
 }
 
 func main() {
@@ -104,19 +104,19 @@ func main() {
         flag.PrintDefaults()
     }
 
-    flag.BoolVar  (&p.help,         "h",       p.help,         HelpInfo)
-    flag.BoolVar  (&p.recursive,    "r",       p.recursive,    RecursiveInfo)
-    flag.StringVar(&p.filterString, "f",       p.filterString, FilterStringInfo)
-    flag.BoolVar  (&p.fnamesOnly,   "n",       p.fnamesOnly,   FnamesOnlyInfo)
-    flag.BoolVar  (&p.ignoreCase,   "i",       p.ignoreCase,   IgnoreCaseInfo)
-    flag.BoolVar  (&p.quiet,        "q",       p.quiet,        QuietInfo)
-    flag.BoolVar  (&p.verbose,      "v",       p.verbose,      VerboseInfo)
-    flag.BoolVar  (&p.noSkip,       "noskip",  p.noSkip,       NoSkipInfo)
-    flag.BoolVar  (&p.noAnsiColor,  "nocolor", p.noAnsiColor,  NoAnsiColorInfo)
-    flag.BoolVar  (&p.absPaths,     "abs",     p.absPaths,     AbsPathsInfo)
+    flag.BoolVar  (&p.Help,         "h",       p.Help,         HelpInfo)
+    flag.BoolVar  (&p.Recursive,    "r",       p.Recursive,    RecursiveInfo)
+    flag.StringVar(&p.FilterString, "f",       p.FilterString, FilterStringInfo)
+    flag.BoolVar  (&p.FnamesOnly,   "n",       p.FnamesOnly,   FnamesOnlyInfo)
+    flag.BoolVar  (&p.IgnoreCase,   "i",       p.IgnoreCase,   IgnoreCaseInfo)
+    flag.BoolVar  (&p.Quiet,        "q",       p.Quiet,        QuietInfo)
+    flag.BoolVar  (&p.Verbose,      "v",       p.Verbose,      VerboseInfo)
+    flag.BoolVar  (&p.NoSkip,       "noskip",  p.NoSkip,       NoSkipInfo)
+    flag.BoolVar  (&p.NoAnsiColor,  "nocolor", p.NoAnsiColor,  NoAnsiColorInfo)
+    flag.BoolVar  (&p.AbsPaths,     "abs",     p.AbsPaths,     AbsPathsInfo)
     flag.Parse()
 
-    if p.help {
+    if p.Help {
         flag.Usage()
         os.Exit(0)
     }
@@ -125,11 +125,11 @@ func main() {
         flag.Usage()
         os.Exit(1)
     } else if flag.NArg() == 1 {
-        p.regexString = flag.Args()[0]
-        p.paths = []string{"."} // Search in the CWD by default
+        p.RegexString = flag.Args()[0]
+        p.Paths = []string{"."} // Search in the CWD by default
     } else {
-        p.regexString = flag.Args()[0]
-        p.paths = flag.Args()[1:]
+        p.RegexString = flag.Args()[0]
+        p.Paths = flag.Args()[1:]
     }
 
     done := func(interrupted bool) {
@@ -213,7 +213,7 @@ func discoverFilesRecursive(fileChan chan FileInfoWithPath, paths []string) {
         for f := range shallowChan {
             fileChan <- f
             if f.IsDir() {
-                paths = append(paths, f.path)
+                paths = append(paths, f.Path)
             }
         }
     }
@@ -221,52 +221,52 @@ func discoverFilesRecursive(fileChan chan FileInfoWithPath, paths []string) {
 }
 
 func find(p FindParameters) (bool, string) {
-    if p.quiet && p.verbose {
+    if p.Quiet && p.Verbose {
         return false, "The quiet and verbose modes are mutually exclusive."
     }
     
-    if p.filterString != "" && p.fnamesOnly {
+    if p.FilterString != "" && p.FnamesOnly {
         return false, "Using the filter while searching for filenames is redundant."
     }
     var maybeIgnoreCase = ""
-    if p.ignoreCase {
+    if p.IgnoreCase {
         maybeIgnoreCase = "(?i)"
     }
 
-    if p.noAnsiColor {
+    if p.NoAnsiColor {
         AnsiReset = ""
         AnsiError = ""
         AnsiMatch = ""
     }
 
-    regex, err := regexp.Compile(maybeIgnoreCase+p.regexString)
+    regex, err := regexp.Compile(maybeIgnoreCase + p.RegexString)
     if err != nil {
         return false, fmt.Sprintf("Bad mandatory regex: %s", err.Error())
     }
-    filter, err := regexp.Compile(maybeIgnoreCase+p.filterString)
+    filter, err := regexp.Compile(maybeIgnoreCase + p.FilterString)
     if err != nil {
         return false, fmt.Sprintf("Bad filter regex: %s", err.Error())
     }
 
     c := make(chan FileInfoWithPath)
-    if p.recursive {
-        go discoverFilesRecursive(c, p.paths)
+    if p.Recursive {
+        go discoverFilesRecursive(c, p.Paths)
     } else {
-        go discoverFilesShallow(c, p.paths)
+        go discoverFilesShallow(c, p.Paths)
     }
 
     for f := range c {
         discoverCount++
 
-        if p.filterString != "" && !filter.MatchString(f.Name()) {
+        if p.FilterString != "" && !filter.MatchString(f.Name()) {
             skipCount++
-            if p.verbose {
+            if p.Verbose {
                 reportError(false, "Skipping %s\n", f.Name())
             }
             continue
         }
 
-        if p.fnamesOnly {
+        if p.FnamesOnly {
             searchFilename(p, f, regex)
         } else {
             searchFileContents(p, f, regex)
@@ -281,19 +281,19 @@ func searchFilename(p FindParameters, f FileInfoWithPath, re *regexp.Regexp) {
     if matches != nil {
         for _,triple := range matches {
             matchCount++
-            if p.listener != nil {
-                p.listener(f.path, triple.middle, -1, -1)
+            if p.Listener != nil {
+                p.Listener(f.Path, triple.Middle, -1, -1)
             }
 
-            if p.quiet {
-                fmt.Fprintln(p.out, triple.middle)
+            if p.Quiet {
+                fmt.Fprintln(p.Out, triple.Middle)
             } else {
-                path,_ := filepath.Split(f.path)
+                path,_ := filepath.Split(f.Path)
                 separatorIfDir := ""
                 if f.IsDir() {
                     separatorIfDir = string(os.PathSeparator)
                 }
-                fmt.Fprintf(p.out, "%s%s%s%s%s%s%s\n", path, triple.left, AnsiMatch, triple.middle, AnsiReset, triple.right, separatorIfDir)
+                fmt.Fprintf(p.Out, "%s%s%s%s%s%s%s\n", path, triple.Left, AnsiMatch, triple.Middle, AnsiReset, triple.Right, separatorIfDir)
             }
         }
     }
@@ -305,10 +305,10 @@ func searchFileContents(p FindParameters, f FileInfoWithPath, re *regexp.Regexp)
         return
     }
 
-    openedFile, err := os.Open(f.path)
+    openedFile, err := os.Open(f.Path)
     if err != nil {
-        if p.verbose {
-            fmt.Fprintf(p.out, "%s%s%s\n", AnsiError, err.Error(), AnsiReset)
+        if p.Verbose {
+            fmt.Fprintf(p.Out, "%s%s%s\n", AnsiError, err.Error(), AnsiReset)
         }
         return
     }
@@ -330,7 +330,7 @@ func searchFileContents(p FindParameters, f FileInfoWithPath, re *regexp.Regexp)
             }
         }
         
-        if !p.noSkip {
+        if !p.NoSkip {
             for _, r := range line {
                 if r == '\000' {
                     // Files with non-printable chars, ie nullbytes, are skipped.
@@ -346,28 +346,23 @@ func searchFileContents(p FindParameters, f FileInfoWithPath, re *regexp.Regexp)
         if matches != nil {
             for _,triple := range matches {
                 matchCount++
-                column := len(triple.left) + leadingSpace
-                if p.listener != nil {
-                    p.listener(f.path, triple.middle, lineNumber, column)
+                column := len(triple.Left) + leadingSpace
+                if p.Listener != nil {
+                    p.Listener(f.Path, triple.Middle, lineNumber, column)
                 }
 
-                if p.quiet {
-                    fmt.Fprintln(p.out, triple.middle)
+                if p.Quiet {
+                    fmt.Fprintln(p.Out, triple.Middle)
                 } else {
-                    fmt.Fprintf(p.out, "%s:%v:%v: %s%s%s%s%s\n", f.path, lineNumber, column, triple.left, AnsiMatch, triple.middle, AnsiReset, triple.right)
+                    fmt.Fprintf(p.Out, "%s:%v:%v: %s%s%s%s%s\n", f.Path, lineNumber, column, triple.Left, AnsiMatch, triple.Middle, AnsiReset, triple.Right)
                 }
             }
         }
         lineNumber += 1
     }
-    if err := scanner.Err(); err != nil && p.verbose {
-        reportError(false, "%s: %s\n", f.path, err.Error())
+    if err := scanner.Err(); err != nil && p.Verbose {
+        reportError(false, "%s: %s\n", f.Path, err.Error())
     }
-}
-
-func isDirOrSymlinkPointingToDir(f FileInfoWithPath) bool {
-//	fmt.Printf("is %s a symlink? %t\n", f.path, isSymlink(f))
-    return f.IsDir() || isSymlink(f)
 }
 
 func isSymlink(f os.FileInfo) bool {
@@ -375,13 +370,13 @@ func isSymlink(f os.FileInfo) bool {
 }
 
 type StringTriple struct {
-    left   string
-    middle string
-    right  string
+    Left   string
+    Middle string
+    Right  string
 }
 
 func (s StringTriple) String() string {
-    return fmt.Sprintf("(\"%s\",\"%s\",\"%s\")", s.left, s.middle, s.right)
+    return fmt.Sprintf("(\"%s\",\"%s\",\"%s\")", s.Left, s.Middle, s.Right)
 }
 
 /*

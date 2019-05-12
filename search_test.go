@@ -129,8 +129,8 @@ func SplitPath(path string) []string {
 }
 
 func Expect(t *testing.T, params FindParameters, expected []Match) {
-    params.out = out
-    params.listener = func(path string, match string, row int, column int) {
+    params.Out = out
+    params.Listener = func(path string, match string, row int, column int) {
         actual := Match {path, match, row, column}
         matched := false
         for i, exp := range expected {
@@ -153,19 +153,19 @@ func Expect(t *testing.T, params FindParameters, expected []Match) {
 
 func TestNonRecursive(t *testing.T) {
     params := NewFindParameters("some")
-    params.paths = []string{TempTestDir+"/left/"}
+    params.Paths = []string{TempTestDir+"/left/"}
     expected := []Match{Match{TempTestDir+"/left/underleft.txt", "some", 1, 0}}
     Expect(t, params, expected)
     
-    params.regexString = "dontmatchmeplease"
+    params.RegexString = "dontmatchmeplease"
     expected = []Match{}
     Expect(t, params, expected)
 }
 
 func TestRecursive(t *testing.T) {
     params := NewFindParameters("bar")
-    params.paths = []string{TempTestDir}
-    params.recursive = true
+    params.Paths = []string{TempTestDir}
+    params.Recursive = true
     expected := []Match {
         Match{TempTestDir+"/right/rightright/bottomright.txt", "bar", 1, 0},
         Match{TempTestDir+"/right/rightleft/bottomleft.txt", "bar", 1, 0},
@@ -175,20 +175,20 @@ func TestRecursive(t *testing.T) {
 
 func TestNullbytes(t *testing.T) {
     params := NewFindParameters("foo")
-    params.paths = []string{TempTestDir+"/dontsearch.exe"}
+    params.Paths = []string{TempTestDir+"/dontsearch.exe"}
     expected := []Match{}
     Expect(t, params, expected)
     
-    params.noSkip = true
+    params.NoSkip = true
     expected = []Match{Match{TempTestDir+"/dontsearch.exe", "foo", 1, 1}}
     Expect(t, params, expected)
 }
 
 func TestFilenameSearch(t *testing.T) {
     params := NewFindParameters(".*right.*")
-    params.paths = []string{TempTestDir+"/right"}
-    params.fnamesOnly = true
-    params.recursive = true
+    params.Paths = []string{TempTestDir+"/right"}
+    params.FnamesOnly = true
+    params.Recursive = true
     expected := []Match {
         Match{TempTestDir+"/right/rightleft",  "rightleft",  -1, -1},
         Match{TempTestDir+"/right/rightright", "rightright", -1, -1},
@@ -199,12 +199,12 @@ func TestFilenameSearch(t *testing.T) {
 
 func TestIgnoreCase(t *testing.T) {
     params := NewFindParameters("LaStLiNe")
-    params.paths = []string{TempTestDir}
-    params.ignoreCase = true
+    params.Paths = []string{TempTestDir}
+    params.IgnoreCase = true
     expected := []Match {Match{TempTestDir+"/top.txt", "lastline", 11, 0}}
     Expect(t, params, expected)
 
-    params.ignoreCase = false
+    params.IgnoreCase = false
     expected = []Match{}
     Expect(t, params, expected)
 }
