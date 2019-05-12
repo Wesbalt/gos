@@ -22,6 +22,9 @@ package main
  * Error reporting is kind of a mess right now.
  *
  * Don't exit prematurely when testing (eg in the cleanup)
+ *
+ * Consider the command "gos -r foo/bar foo" where foo and bar are directories.
+ * Would this search bar twice? That wouldn't be good.
  */
 
 import (
@@ -181,8 +184,43 @@ var AnsiReset = "\033[0m"
 var AnsiError = "\033[91m"
 var AnsiMatch = "\033[92;4m"
 
-func find(p FindParameters) (bool, string) {
+func discoverFilesShallow(fileChan chan FileInfoWithPath, paths []string) {
+    for _, path := range paths {
+        f, err := os.Stat(path) // Follows symlinks
+        if err != nil {
+            return // @TODO report error
+        }
+        if f.IsDir() {
+            children, err := ioutil.ReadDir(path)
+            if err != nil {
+                return // @TODO report error
+            }
+            for _, child := range children {
+                fileChan <- FileInfoWithPath{child, filepath.Join(path, child.Name())} 
+            }
+        } else {
+            fileChan <- FileInfoWithPath{f, path}
+        }
+    }
+    close(fileChan)
+}
 
+func discoverFilesRecursive(fileChan chan FileInfoWithPath, paths []string) {
+    for len(paths) > 0 {
+        shallowChan := make(chan FileInfoWithPath)
+        go discoverFilesShallow(shallowChan, paths)
+        paths = []string{}
+        for f := range shallowChan {
+            fileChan <- f
+            if f.IsDir() {
+                paths = append(paths, f.path)
+            }
+        }
+    }
+    close(fileChan)
+}
+
+func find(p FindParameters) (bool, string) {
     if p.quiet && p.verbose {
         return false, "The quiet and verbose modes are mutually exclusive."
     }
@@ -210,20 +248,15 @@ func find(p FindParameters) (bool, string) {
         return false, fmt.Sprintf("Bad filter regex: %s", err.Error())
     }
 
-    queue := getFileInfoWithPaths(p, p.paths)
+    c := make(chan FileInfoWithPath)
+    if p.recursive {
+        go discoverFilesRecursive(c, p.paths)
+    } else {
+        go discoverFilesShallow(c, p.paths)
+    }
 
-    for len(queue) > 0 {
-
-        f := queue[0]
-        queue = queue[1:]
+    for f := range c {
         discoverCount++
-        
-        if isDirOrSymlinkPointingToDir(f) && p.recursive {
-            children := getFileInfoWithPaths(p, []string{f.path})
-            // Appending the children makes the search method BFS. If they were
-            // prepended it would be DFS. I don't know what the best decision is.
-            queue = append(queue, children...)
-        }
 
         if p.filterString != "" && !filter.MatchString(f.Name()) {
             skipCount++
@@ -375,40 +408,4 @@ func splitStringAtAllMatches(s string, re *regexp.Regexp) []StringTriple {
         return triples
     }
     return nil
-}
-
-func getFileInfoWithPaths(p FindParameters, paths []string) []FileInfoWithPath {
-    var finfoWithPaths []FileInfoWithPath
-
-    add := func(finfoWithPath FileInfoWithPath) {
-        if p.absPaths {
-            finfoWithPath.path, _ = filepath.Abs(finfoWithPath.path)
-        }
-        finfoWithPaths = append(finfoWithPaths, finfoWithPath)
-    }
-
-    for _, path := range paths {
-        finfo, err := os.Stat(path) // Follows symlinks
-        if err != nil {
-            if p.verbose {
-                reportError(false, err.Error()+"\n")
-            }
-            continue
-        }
-        if finfo.IsDir() || isSymlink(finfo) {
-            children, err := ioutil.ReadDir(path)
-            if err != nil {
-                if p.verbose {
-                    reportError(false, err.Error()+"\n")
-                }
-                continue
-            }
-            for _, child := range children {
-                add(FileInfoWithPath{child, filepath.Join(path, child.Name())})
-            }
-        } else {
-            add(FileInfoWithPath{finfo, path})
-        }
-    }
-    return finfoWithPaths
 }
