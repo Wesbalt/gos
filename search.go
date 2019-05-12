@@ -54,7 +54,7 @@ const (
     AbsPathsInfo     = "Output absolute paths"
 )
 
-type FindParameters struct {
+type GosParameters struct {
     Paths         []string
     RegexString   string
     Help          bool
@@ -71,8 +71,8 @@ type FindParameters struct {
     Listener      func(path string, match string, row int, column int)
 }
 
-func NewFindParameters(regexString string) FindParameters {
-    return FindParameters {
+func DefaultGosParameters(regexString string) GosParameters {
+    return GosParameters {
         Paths:        []string{"."},
         RegexString:  regexString,
         Help:         false,
@@ -96,7 +96,7 @@ type FileInfoWithPath struct {
 }
 
 func main() {
-    p := NewFindParameters("\\") // Invalid regexp, it must be correctly set later
+    gos := DefaultGosParameters("\\") // Invalid regexp, it must be correctly set later
 
     flag.Usage = func() {
         fmt.Fprintf(os.Stderr, "Usage of search: %s [options] regex [path...]\n", os.Args[0])
@@ -104,19 +104,19 @@ func main() {
         flag.PrintDefaults()
     }
 
-    flag.BoolVar  (&p.Help,         "h",       p.Help,         HelpInfo)
-    flag.BoolVar  (&p.Recursive,    "r",       p.Recursive,    RecursiveInfo)
-    flag.StringVar(&p.FilterString, "f",       p.FilterString, FilterStringInfo)
-    flag.BoolVar  (&p.FnamesOnly,   "n",       p.FnamesOnly,   FnamesOnlyInfo)
-    flag.BoolVar  (&p.IgnoreCase,   "i",       p.IgnoreCase,   IgnoreCaseInfo)
-    flag.BoolVar  (&p.Quiet,        "q",       p.Quiet,        QuietInfo)
-    flag.BoolVar  (&p.Verbose,      "v",       p.Verbose,      VerboseInfo)
-    flag.BoolVar  (&p.NoSkip,       "noskip",  p.NoSkip,       NoSkipInfo)
-    flag.BoolVar  (&p.NoAnsiColor,  "nocolor", p.NoAnsiColor,  NoAnsiColorInfo)
-    flag.BoolVar  (&p.AbsPaths,     "abs",     p.AbsPaths,     AbsPathsInfo)
+    flag.BoolVar  (&gos.Help,         "h",       gos.Help,         HelpInfo)
+    flag.BoolVar  (&gos.Recursive,    "r",       gos.Recursive,    RecursiveInfo)
+    flag.StringVar(&gos.FilterString, "f",       gos.FilterString, FilterStringInfo)
+    flag.BoolVar  (&gos.FnamesOnly,   "n",       gos.FnamesOnly,   FnamesOnlyInfo)
+    flag.BoolVar  (&gos.IgnoreCase,   "i",       gos.IgnoreCase,   IgnoreCaseInfo)
+    flag.BoolVar  (&gos.Quiet,        "q",       gos.Quiet,        QuietInfo)
+    flag.BoolVar  (&gos.Verbose,      "v",       gos.Verbose,      VerboseInfo)
+    flag.BoolVar  (&gos.NoSkip,       "noskip",  gos.NoSkip,       NoSkipInfo)
+    flag.BoolVar  (&gos.NoAnsiColor,  "nocolor", gos.NoAnsiColor,  NoAnsiColorInfo)
+    flag.BoolVar  (&gos.AbsPaths,     "abs",     gos.AbsPaths,     AbsPathsInfo)
     flag.Parse()
 
-    if p.Help {
+    if gos.Help {
         flag.Usage()
         os.Exit(0)
     }
@@ -125,11 +125,11 @@ func main() {
         flag.Usage()
         os.Exit(1)
     } else if flag.NArg() == 1 {
-        p.RegexString = flag.Args()[0]
-        p.Paths = []string{"."} // Search in the CWD by default
+        gos.RegexString = flag.Args()[0]
+        gos.Paths = []string{"."} // Search in the CWD by default
     } else {
-        p.RegexString = flag.Args()[0]
-        p.Paths = flag.Args()[1:]
+        gos.RegexString = flag.Args()[0]
+        gos.Paths = flag.Args()[1:]
     }
 
     done := func(interrupted bool) {
@@ -153,7 +153,7 @@ func main() {
         }()
     }
 
-    success, message := find(p)
+    success, message := GoOnSearch(gos)
     if !success {
         fmt.Fprintln(os.Stderr, AnsiError + message + AnsiReset)
         os.Exit(1)
@@ -220,86 +220,86 @@ func discoverFilesRecursive(fileChan chan FileInfoWithPath, paths []string) {
     close(fileChan)
 }
 
-func find(p FindParameters) (bool, string) {
-    if p.Quiet && p.Verbose {
+func GoOnSearch(gos GosParameters) (bool, string) {
+    if gos.Quiet && gos.Verbose {
         return false, "The quiet and verbose modes are mutually exclusive."
     }
     
-    if p.FilterString != "" && p.FnamesOnly {
+    if gos.FilterString != "" && gos.FnamesOnly {
         return false, "Using the filter while searching for filenames is redundant."
     }
     var maybeIgnoreCase = ""
-    if p.IgnoreCase {
+    if gos.IgnoreCase {
         maybeIgnoreCase = "(?i)"
     }
 
-    if p.NoAnsiColor {
+    if gos.NoAnsiColor {
         AnsiReset = ""
         AnsiError = ""
         AnsiMatch = ""
     }
 
-    regex, err := regexp.Compile(maybeIgnoreCase + p.RegexString)
+    regex, err := regexp.Compile(maybeIgnoreCase + gos.RegexString)
     if err != nil {
         return false, fmt.Sprintf("Bad mandatory regex: %s", err.Error())
     }
-    filter, err := regexp.Compile(maybeIgnoreCase + p.FilterString)
+    filter, err := regexp.Compile(maybeIgnoreCase + gos.FilterString)
     if err != nil {
         return false, fmt.Sprintf("Bad filter regex: %s", err.Error())
     }
 
     c := make(chan FileInfoWithPath)
-    if p.Recursive {
-        go discoverFilesRecursive(c, p.Paths)
+    if gos.Recursive {
+        go discoverFilesRecursive(c, gos.Paths)
     } else {
-        go discoverFilesShallow(c, p.Paths)
+        go discoverFilesShallow(c, gos.Paths)
     }
 
     for f := range c {
         discoverCount++
 
-        if p.FilterString != "" && !filter.MatchString(f.Name()) {
+        if gos.FilterString != "" && !filter.MatchString(f.Name()) {
             skipCount++
-            if p.Verbose {
+            if gos.Verbose {
                 reportError(false, "Skipping %s\n", f.Name())
             }
             continue
         }
 
-        if p.FnamesOnly {
-            searchFilename(p, f, regex)
+        if gos.FnamesOnly {
+            searchFilename(gos, f, regex)
         } else {
-            searchFileContents(p, f, regex)
+            searchFileContents(gos, f, regex)
         }      
     }
     return true, ""
 }
 
-func searchFilename(p FindParameters, f FileInfoWithPath, re *regexp.Regexp) {
+func searchFilename(gos GosParameters, f FileInfoWithPath, re *regexp.Regexp) {
     searchCount++
     matches := splitStringAtAllMatches(f.Name(), re)
     if matches != nil {
         for _,triple := range matches {
             matchCount++
-            if p.Listener != nil {
-                p.Listener(f.Path, triple.Middle, -1, -1)
+            if gos.Listener != nil {
+                gos.Listener(f.Path, triple.Middle, -1, -1)
             }
 
-            if p.Quiet {
-                fmt.Fprintln(p.Out, triple.Middle)
+            if gos.Quiet {
+                fmt.Fprintln(gos.Out, triple.Middle)
             } else {
                 path,_ := filepath.Split(f.Path)
                 separatorIfDir := ""
                 if f.IsDir() {
                     separatorIfDir = string(os.PathSeparator)
                 }
-                fmt.Fprintf(p.Out, "%s%s%s%s%s%s%s\n", path, triple.Left, AnsiMatch, triple.Middle, AnsiReset, triple.Right, separatorIfDir)
+                fmt.Fprintf(gos.Out, "%s%s%s%s%s%s%s\n", path, triple.Left, AnsiMatch, triple.Middle, AnsiReset, triple.Right, separatorIfDir)
             }
         }
     }
 }
 
-func searchFileContents(p FindParameters, f FileInfoWithPath, re *regexp.Regexp) {
+func searchFileContents(gos GosParameters, f FileInfoWithPath, re *regexp.Regexp) {
     if f.IsDir() || isSymlink(f) {
         skipCount++
         return
@@ -307,8 +307,8 @@ func searchFileContents(p FindParameters, f FileInfoWithPath, re *regexp.Regexp)
 
     openedFile, err := os.Open(f.Path)
     if err != nil {
-        if p.Verbose {
-            fmt.Fprintf(p.Out, "%s%s%s\n", AnsiError, err.Error(), AnsiReset)
+        if gos.Verbose {
+            fmt.Fprintf(gos.Out, "%s%s%s\n", AnsiError, err.Error(), AnsiReset)
         }
         return
     }
@@ -330,7 +330,7 @@ func searchFileContents(p FindParameters, f FileInfoWithPath, re *regexp.Regexp)
             }
         }
         
-        if !p.NoSkip {
+        if !gos.NoSkip {
             for _, r := range line {
                 if r == '\000' {
                     // Files with non-printable chars, ie nullbytes, are skipped.
@@ -347,20 +347,20 @@ func searchFileContents(p FindParameters, f FileInfoWithPath, re *regexp.Regexp)
             for _,triple := range matches {
                 matchCount++
                 column := len(triple.Left) + leadingSpace
-                if p.Listener != nil {
-                    p.Listener(f.Path, triple.Middle, lineNumber, column)
+                if gos.Listener != nil {
+                    gos.Listener(f.Path, triple.Middle, lineNumber, column)
                 }
 
-                if p.Quiet {
-                    fmt.Fprintln(p.Out, triple.Middle)
+                if gos.Quiet {
+                    fmt.Fprintln(gos.Out, triple.Middle)
                 } else {
-                    fmt.Fprintf(p.Out, "%s:%v:%v: %s%s%s%s%s\n", f.Path, lineNumber, column, triple.Left, AnsiMatch, triple.Middle, AnsiReset, triple.Right)
+                    fmt.Fprintf(gos.Out, "%s:%v:%v: %s%s%s%s%s\n", f.Path, lineNumber, column, triple.Left, AnsiMatch, triple.Middle, AnsiReset, triple.Right)
                 }
             }
         }
         lineNumber += 1
     }
-    if err := scanner.Err(); err != nil && p.Verbose {
+    if err := scanner.Err(); err != nil && gos.Verbose {
         reportError(false, "%s: %s\n", f.Path, err.Error())
     }
 }
