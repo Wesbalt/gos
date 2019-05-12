@@ -99,8 +99,8 @@ func main() {
     gos := DefaultGosParameters("\\") // Invalid regexp, it must be correctly set later
 
     flag.Usage = func() {
-        fmt.Fprintf(os.Stderr, "Usage: %s [options] regex [path...]\n", os.Args[0])
-        fmt.Fprintf(os.Stderr, "Options:\n")
+        fmt.Fprintf(gos.Out, "Usage: %s [options] regex [path...]\n", os.Args[0])
+        fmt.Fprintf(gos.Out, "Options:\n")
         flag.PrintDefaults()
     }
 
@@ -151,19 +151,9 @@ func main() {
     os.Exit(0)
 }
 
-func reportError(exit bool, fstring string, args ...interface{}) {
-//	if len(args) == 0 {
-//		fmt.Fprintf(os.Stderr, AnsiError+fstring+AnsiReset)
-//	} else {
-        fmt.Fprintf(os.Stderr, AnsiError+fstring+AnsiReset, args...)
-//	}
-    if exit {
-        os.Exit(1)
-    }
-}
-
 // ANSI escape sequences. See the link for available parameters.
 // https://en.wikipedia.org/wiki/ANSI_escape_code#SGR_(Select_Graphic_Rendition)_parameters
+// Set these to "" to disable ANSI colored output
 var AnsiReset = "\033[0m"
 var AnsiError = "\033[91m"
 var AnsiMatch = "\033[92;4m"
@@ -210,7 +200,7 @@ func GoOnSearch(gos GosParameters) (bool, string) {
     }
     
     if gos.FilterString != "" && gos.FnamesOnly {
-        return false, "Using the filter while searching for filenames is redundant."
+        return false, "Using the filter while searching for filenames is redundant. Use the usual regex instead."
     }
     var maybeIgnoreCase = ""
     if gos.IgnoreCase {
@@ -225,11 +215,11 @@ func GoOnSearch(gos GosParameters) (bool, string) {
 
     regex, err := regexp.Compile(maybeIgnoreCase + gos.RegexString)
     if err != nil {
-        return false, fmt.Sprintf("Bad mandatory regex: %s", err.Error())
+        return false, "Bad mandatory regex: " + err.Error()
     }
     filter, err := regexp.Compile(maybeIgnoreCase + gos.FilterString)
     if err != nil {
-        return false, fmt.Sprintf("Bad filter regex: %s", err.Error())
+        return false, "Bad filter regex: %s" + err.Error()
     }
 
     c := make(chan FileInfoWithPath)
@@ -242,7 +232,7 @@ func GoOnSearch(gos GosParameters) (bool, string) {
     for f := range c {
         if gos.FilterString != "" && !filter.MatchString(f.Name()) {
             if gos.Verbose {
-                reportError(false, "Skipping %s\n", f.Name())
+                fmt.Fprintln(gos.Out, "%sSkipping %s%s\n", AnsiError, f.Name(), AnsiReset)
             }
             continue
         }
@@ -335,7 +325,7 @@ func searchFileContents(gos GosParameters, f FileInfoWithPath, re *regexp.Regexp
         lineNumber += 1
     }
     if err := scanner.Err(); err != nil && gos.Verbose {
-        reportError(false, "%s: %s\n", f.Path, err.Error())
+        fmt.Fprintln(gos.Out, "%s%s: %s%s\n", AnsiError, f.Path, err.Error(), AnsiReset)
     }
 }
 
