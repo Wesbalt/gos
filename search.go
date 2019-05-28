@@ -23,8 +23,6 @@ package main
  * Would this search bar twice? That wouldn't be good.
  *
  * Maybe add support for reading from stdin like grep does.
- *
- * The command "gos -r -n testdir .*" deadhangs the program.
  */
 
 import (
@@ -163,6 +161,7 @@ var AnsiError = "\033[91m"
 var AnsiMatch = "\033[92;4m"
 
 func discoverFilesShallow(gos GosParameters, fileChan chan FileInfoWithPath, paths []string) {
+    defer close(fileChan)
     for _, path := range paths {
         f, err := os.Stat(path) // Follows symlinks
         if err != nil {
@@ -182,7 +181,6 @@ func discoverFilesShallow(gos GosParameters, fileChan chan FileInfoWithPath, pat
             fileChan <- FileInfoWithPath{f, path}
         }
     }
-    close(fileChan)
 }
 
 func discoverFilesRecursive(gos GosParameters, fileChan chan FileInfoWithPath) {
