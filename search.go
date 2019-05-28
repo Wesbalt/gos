@@ -17,8 +17,6 @@ package main
  *
  * Report if any of the supplied paths don't exist
  *
- * Error reporting is kind of a mess right now.
- *
  * Don't exit prematurely when testing (eg in the cleanup)
  *
  * Consider the command "gos -r foo/bar foo" where foo and bar are directories.
@@ -158,16 +156,18 @@ var AnsiReset = "\033[0m"
 var AnsiError = "\033[91m"
 var AnsiMatch = "\033[92;4m"
 
-func discoverFilesShallow(fileChan chan FileInfoWithPath, paths []string) {
+func discoverFilesShallow(gos GosParameters, fileChan chan FileInfoWithPath, paths []string) {
     for _, path := range paths {
         f, err := os.Stat(path) // Follows symlinks
         if err != nil {
-            return // @TODO report error
+            reportFileError(gos, path, err)
+            return
         }
         if f.IsDir() {
             children, err := ioutil.ReadDir(path)
             if err != nil {
-                return // @TODO report error
+                reportFileError(gos, path, err)
+                return
             }
             for _, child := range children {
                 fileChan <- FileInfoWithPath{child, filepath.Join(path, child.Name())} 
@@ -179,10 +179,11 @@ func discoverFilesShallow(fileChan chan FileInfoWithPath, paths []string) {
     close(fileChan)
 }
 
-func discoverFilesRecursive(fileChan chan FileInfoWithPath, paths []string) {
+func discoverFilesRecursive(gos GosParameters, fileChan chan FileInfoWithPath) {
+    paths := gos.Paths
     for len(paths) > 0 {
         shallowChan := make(chan FileInfoWithPath)
-        go discoverFilesShallow(shallowChan, paths)
+        go discoverFilesShallow(gos, shallowChan, paths)
         paths = []string{}
         for f := range shallowChan {
             fileChan <- f
@@ -222,20 +223,22 @@ func GoOnSearch(gos GosParameters) (bool, string) {
         return false, "Bad filter regex: %s" + err.Error()
     }
 
-    c := make(chan FileInfoWithPath)
+    fileCh := make(chan FileInfoWithPath)
     if gos.Recursive {
-        go discoverFilesRecursive(c, gos.Paths)
+        go discoverFilesRecursive(gos, fileCh)
     } else {
-        go discoverFilesShallow(c, gos.Paths)
+        go discoverFilesShallow(gos, fileCh, gos.Paths)
     }
 
-    for f := range c {
+    for f := range fileCh {
         if gos.FilterString != "" && !filter.MatchString(f.Name()) {
             if gos.Verbose {
-                fmt.Fprintln(gos.Out, "%sSkipping %s%s\n", AnsiError, f.Name(), AnsiReset)
+                fmt.Fprintf(gos.Out, "%sFiltering out %s%s\n", AnsiError, f.Name(), AnsiReset)
             }
             continue
         }
+
+        fmt.Println("Searching "+f.Name())
 
         if gos.FnamesOnly {
             searchFilename(gos, f, regex)
@@ -325,8 +328,17 @@ func searchFileContents(gos GosParameters, f FileInfoWithPath, re *regexp.Regexp
         lineNumber += 1
     }
     if err := scanner.Err(); err != nil && gos.Verbose {
-        fmt.Fprintln(gos.Out, "%s%s: %s%s\n", AnsiError, f.Path, err.Error(), AnsiReset)
+        reportFileError(gos, f.Path, err)
     }
+}
+
+func reportFileError(gos GosParameters, path string, err error) {
+    fmt.Printf("%T\n", err)
+    message := "Unknown error: "+err.Error()
+    if _, ok := err.(*os.PathError); ok {
+        message = "The path \"" + path + "\" does not exist."
+    }
+    fmt.Fprintln(gos.Out, AnsiError + message + AnsiReset)
 }
 
 func isSymlink(f os.FileInfo) bool {
