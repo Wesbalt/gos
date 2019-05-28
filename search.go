@@ -11,11 +11,7 @@ package main
  * Add the -exclude option, specifying a variable amount of things
  * that should be skipped.
  *
- * Add flag to output absolute paths
- *
  * Add -examples to print example usages
- *
- * Report if any of the supplied paths don't exist
  *
  * Don't exit prematurely when testing (eg in the cleanup)
  *
@@ -168,6 +164,12 @@ func discoverFilesShallow(gos GosParameters, fileChan chan FileInfoWithPath, pat
             reportFileError(gos, path, err)
             return
         }
+
+        if gos.AbsPaths {
+            path, err = filepath.Abs(path)
+            PanicIfErr(err)
+        }
+        
         if f.IsDir() {
             children, err := ioutil.ReadDir(path)
             if err != nil {
@@ -336,6 +338,12 @@ func searchFileContents(gos GosParameters, f FileInfoWithPath) {
     }
     if err := scanner.Err(); err != nil && gos.Verbose {
         reportFileError(gos, f.Path, err)
+    }
+}
+
+func PanicIfErr(e error) {
+    if e != nil {
+        panic(e)
     }
 }
 
