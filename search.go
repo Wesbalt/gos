@@ -23,6 +23,8 @@ package main
  * Would this search bar twice? That wouldn't be good.
  *
  * Maybe add support for reading from stdin like grep does.
+ *
+ * The command "gos -r -n testdir .*" deadhangs the program.
  */
 
 import (
@@ -55,9 +57,11 @@ const (
 type GosParameters struct {
     Paths         []string
     RegexString   string
+    Regex         *regexp.Regexp
     Help          bool
     Recursive     bool
     FilterString  string
+    Filter        *regexp.Regexp
     FnamesOnly    bool
     IgnoreCase    bool
     Quiet         bool
@@ -73,9 +77,11 @@ func DefaultGosParameters(regexString string) GosParameters {
     return GosParameters {
         Paths:        []string{"."},
         RegexString:  regexString,
+        Regex:        nil,
         Help:         false,
         Recursive:    false,
         FilterString: "",
+        Filter:       nil,
         FnamesOnly:   false,
         IgnoreCase:   false,
         Quiet:        false,
@@ -182,6 +188,9 @@ func discoverFilesShallow(gos GosParameters, fileChan chan FileInfoWithPath, pat
 func discoverFilesRecursive(gos GosParameters, fileChan chan FileInfoWithPath) {
     paths := gos.Paths
     for len(paths) > 0 {
+        // Use an additional channel for shallow discovery
+        // and send whatever it finds. Also, queue paths
+        // that lead to dirs for the recursive part.
         shallowChan := make(chan FileInfoWithPath)
         go discoverFilesShallow(gos, shallowChan, paths)
         paths = []string{}
@@ -214,11 +223,12 @@ func GoOnSearch(gos GosParameters) (bool, string) {
         AnsiMatch = ""
     }
 
-    regex, err := regexp.Compile(maybeIgnoreCase + gos.RegexString)
+    var err error
+    gos.Regex, err = regexp.Compile(maybeIgnoreCase + gos.RegexString)
     if err != nil {
         return false, "Bad mandatory regex: " + err.Error()
     }
-    filter, err := regexp.Compile(maybeIgnoreCase + gos.FilterString)
+    gos.Filter, err = regexp.Compile(maybeIgnoreCase + gos.FilterString)
     if err != nil {
         return false, "Bad filter regex: %s" + err.Error()
     }
@@ -231,26 +241,25 @@ func GoOnSearch(gos GosParameters) (bool, string) {
     }
 
     for f := range fileCh {
-        if gos.FilterString != "" && !filter.MatchString(f.Name()) {
-            if gos.Verbose {
-                fmt.Fprintf(gos.Out, "%sFiltering out %s%s\n", AnsiError, f.Name(), AnsiReset)
-            }
-            continue
-        }
-
-        fmt.Println("Searching "+f.Name())
-
         if gos.FnamesOnly {
-            searchFilename(gos, f, regex)
+            searchFilename(gos, f)
         } else {
-            searchFileContents(gos, f, regex)
+            searchFileContents(gos, f)
         }      
     }
     return true, ""
 }
 
-func searchFilename(gos GosParameters, f FileInfoWithPath, re *regexp.Regexp) {
-    matches := splitStringAtAllMatches(f.Name(), re)
+func searchFilename(gos GosParameters, f FileInfoWithPath) {
+
+    if gos.FilterString != "" && !gos.Filter.MatchString(f.Name()) {
+        if gos.Verbose {
+            fmt.Fprintf(gos.Out, "%sFiltering out %s%s\n", AnsiError, f.Name(),  AnsiReset)
+        }
+        return
+    }
+
+    matches := splitStringAtAllMatches(f.Name(), gos.Regex)
     if matches != nil {
         for _,triple := range matches {
             if gos.Listener != nil {
@@ -260,18 +269,18 @@ func searchFilename(gos GosParameters, f FileInfoWithPath, re *regexp.Regexp) {
             if gos.Quiet {
                 fmt.Fprintln(gos.Out, triple.Middle)
             } else {
-                path,_ := filepath.Split(f.Path)
+                fname,_ := filepath.Split(f.Path) // Split so that we able to color only the filename
                 separatorIfDir := ""
                 if f.IsDir() {
                     separatorIfDir = string(os.PathSeparator)
                 }
-                fmt.Fprintf(gos.Out, "%s%s%s%s%s%s%s\n", path, triple.Left, AnsiMatch, triple.Middle, AnsiReset, triple.Right, separatorIfDir)
+                fmt.Fprintf(gos.Out, "%s%s%s%s%s%s%s\n", fname, triple.Left, AnsiMatch, triple.Middle, AnsiReset, triple.Right, separatorIfDir)
             }
         }
     }
 }
 
-func searchFileContents(gos GosParameters, f FileInfoWithPath, re *regexp.Regexp) {
+func searchFileContents(gos GosParameters, f FileInfoWithPath) {
     if f.IsDir() || isSymlink(f) {
         return
     }
@@ -310,7 +319,7 @@ func searchFileContents(gos GosParameters, f FileInfoWithPath, re *regexp.Regexp
             }
         }
 
-        matches := splitStringAtAllMatches(line, re)
+        matches := splitStringAtAllMatches(line, gos.Regex)
         if matches != nil {
             for _,triple := range matches {
                 column := len(triple.Left) + leadingSpace
@@ -333,6 +342,7 @@ func searchFileContents(gos GosParameters, f FileInfoWithPath, re *regexp.Regexp
 }
 
 func reportFileError(gos GosParameters, path string, err error) {
+    // @TODO finding the error type seems inconsistent
     fmt.Printf("%T\n", err)
     message := "Unknown error: "+err.Error()
     if _, ok := err.(*os.PathError); ok {
